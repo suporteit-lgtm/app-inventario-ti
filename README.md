@@ -56,15 +56,17 @@ Reinicie o `expo start` depois de qualquer alteração no `.env`.
 
 ## Banco de dados
 
-Os scripts ficam em [supabase/](supabase). Execute-os no **SQL Editor** do projeto Supabase:
+Os scripts ficam em [supabase/](supabase). Execute-os no **SQL Editor** do projeto Supabase.
+
+Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempotente e substitui `setup-app.sql` até `setup-app-v5.sql`, que ficam no repositório só como histórico. É também o script para rodar de novo caso uma migration do Prisma resete o banco.
 
 | Arquivo | O que faz |
 |---|---|
-| `setup-app.sql` … `setup-app-v5.sql` | criação e evolução do schema do app (aplicar em ordem) |
-| `setup-linhas-corporativas.sql` | tabelas de linhas corporativas |
-| `corrigir-permissoes.sql` | grants e RLS para `anon`, `authenticated` e `service_role` |
-| `restore-after-reset.sql` | reconstrói permissões após um reset do banco |
+| `restore-after-reset.sql` | **script principal**: colunas extras do app, tabela `EquipmentLog`, RLS, grants e templates de termo |
+| `setup-linhas-corporativas.sql` | colunas da categoria "Linhas corporativas" (operadora, ICCID, telefone…) |
+| `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
+| `setup-app.sql` … `setup-app-v5.sql` | histórico, superados pelo `restore-after-reset.sql` |
 
 Tabelas principais: `Unit` (inventários), `Category` (tipos de equipamento), `Equipment`, `User` (papel e inventários liberados) e `AssignmentHistory` (movimentações). Os alertas são derivados de `warrantyEndDate` combinado com `Settings.warrantyWarningDays`.
 
