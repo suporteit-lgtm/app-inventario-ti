@@ -37,7 +37,41 @@ Deno.serve(async (req) => {
       return json({ error: 'Apenas administradores podem gerenciar usuários' }, 403);
     }
 
-    const { action, email, novoEmail, novaSenha } = await req.json();
+    const { action, email, novoEmail, novaSenha, perfil, nome, allowedUnitIds } = await req.json();
+
+    // Grava na tabela "User" usando a service_role. É isto que permite
+    // fechar a tabela para o app: o cargo e os acessos passam a só mudar
+    // por aqui, depois da checagem de administrador feita acima.
+    // Reexecuta sem a coluna "cpf" se ela ainda não existir no banco.
+    const gravarPerfil = async (
+      op: 'insert' | 'update',
+      dados: Record<string, unknown>,
+      alvoEmail?: string
+    ) => {
+      const exec = async (d: Record<string, unknown>) =>
+        op === 'insert'
+          ? await admin.from('User').insert(d)
+          : await admin.from('User').update(d).ilike('email', alvoEmail!);
+      let { error } = await exec(dados);
+      if (error && /cpf/i.test(error.message)) {
+        const { cpf: _ignorado, ...semCpf } = dados;
+        ({ error } = await exec(semCpf));
+      }
+      return error;
+    };
+
+    // Acessos por inventário (tela de Permissões). Identifica pelo nome,
+    // que é como o app já faz.
+    if (action === 'set-access') {
+      if (!nome) return json({ error: 'Parâmetros inválidos' }, 400);
+      const { error } = await admin
+        .from('User')
+        .update({ allowedUnitIds: Array.isArray(allowedUnitIds) && allowedUnitIds.length ? allowedUnitIds : null })
+        .eq('name', nome);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
     if (!action || !email) return json({ error: 'Parâmetros inválidos' }, 400);
 
     const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -52,6 +86,18 @@ Deno.serve(async (req) => {
         email_confirm: true,
       });
       if (error) return json({ error: error.message }, 400);
+      // "perfil" só vem das versões novas do app; sem ele a função se
+      // comporta como antes e o app grava a linha por conta própria.
+      if (perfil) {
+        const erroPerfil = await gravarPerfil('insert', perfil);
+        if (erroPerfil) {
+          // desfaz o login para não deixar usuário órfão no Auth
+          const { data: l2 } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+          const criado = l2?.users?.find((u: any) => u.email?.toLowerCase() === String(email).toLowerCase());
+          if (criado) await admin.auth.admin.deleteUser(criado.id);
+          return json({ error: 'Login criado, mas falhou ao salvar o perfil: ' + erroPerfil.message }, 400);
+        }
+      }
       return json({ ok: true });
     }
 
@@ -62,14 +108,22 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'update') {
-      if (!target) return json({ error: 'Login não encontrado no Supabase Auth' }, 404);
-      // email_confirm sempre true: também "destrava" usuários criados
-      // enquanto a confirmação por e-mail estava ligada
-      const attrs: Record<string, unknown> = { email_confirm: true };
-      if (novoEmail) attrs.email = novoEmail;
-      if (novaSenha) attrs.password = novaSenha;
-      const { error } = await admin.auth.admin.updateUserById(target.id, attrs);
-      if (error) return json({ error: error.message }, 400);
+      // Só exige o login no Auth quando há e-mail/senha para alterar;
+      // atualizar apenas o perfil funciona mesmo sem login correspondente.
+      if (novoEmail || novaSenha) {
+        if (!target) return json({ error: 'Login não encontrado no Supabase Auth' }, 404);
+        // email_confirm sempre true: também "destrava" usuários criados
+        // enquanto a confirmação por e-mail estava ligada
+        const attrs: Record<string, unknown> = { email_confirm: true };
+        if (novoEmail) attrs.email = novoEmail;
+        if (novaSenha) attrs.password = novaSenha;
+        const { error } = await admin.auth.admin.updateUserById(target.id, attrs);
+        if (error) return json({ error: error.message }, 400);
+      }
+      if (perfil) {
+        const erroPerfil = await gravarPerfil('update', perfil, email);
+        if (erroPerfil) return json({ error: 'Falha ao salvar o usuário: ' + erroPerfil.message }, 400);
+      }
       return json({ ok: true });
     }
 

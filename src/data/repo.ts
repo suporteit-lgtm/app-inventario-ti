@@ -1060,26 +1060,10 @@ class SupabaseRepo implements Repo {
     access: string[],
     cpf?: string
   ): Promise<string | null> {
-    // Preferência: função Edge (cria o login já confirmado e ativo).
-    // Fallback: signUp comum — que pode exigir confirmação por e-mail
-    // dependendo da configuração do projeto.
-    let confirmado = await this.adminUsersFn({ action: 'create', email: email.trim(), novaSenha: senha });
-    if (!confirmado) {
-      const auxClient = getSupabaseAux();
-      if (!auxClient) throw new Error('Supabase não configurado');
-      const { data, error } = await auxClient.auth.signUp({ email: email.trim(), password: senha });
-      if (error) {
-        throw new Error(
-          /already|registered|exists/i.test(error.message) ? 'E-mail já possui login cadastrado' : 'Falha ao criar login: ' + error.message
-        );
-      }
-      // sem sessão = projeto exige confirmação por e-mail
-      confirmado = !!data.session;
-    }
     const now = new Date().toISOString();
     const ids = access.map((n) => this.unitId(n)).filter(Boolean);
     const rawRole = this.rawRoleByApp.get(role) || (role === 'Admin' ? 'ADMIN' : 'USER');
-    const row: Record<string, any> = {
+    const perfil: Record<string, any> = {
       id: genId(),
       name: nome.trim(),
       email: email.trim(),
@@ -1091,13 +1075,43 @@ class SupabaseRepo implements Repo {
       createdAt: now,
       updatedAt: now,
     };
+
+    // Caminho normal: a função Edge cria o login já confirmado E grava o
+    // perfil com service_role — a tabela "User" não é escrita pelo app.
+    if (await this.adminUsersFn({ action: 'create', email: email.trim(), novaSenha: senha, perfil })) {
+      return null;
+    }
+
+    // Fallback (função ainda não publicada): signUp comum + gravação
+    // direta. Deixa de funcionar quando o RLS da tabela "User" for
+    // fechado — por isso o erro abaixo aponta o que falta fazer.
+    let confirmado = false;
+    {
+      const auxClient = getSupabaseAux();
+      if (!auxClient) throw new Error('Supabase não configurado');
+      const { data, error } = await auxClient.auth.signUp({ email: email.trim(), password: senha });
+      if (error) {
+        throw new Error(
+          /already|registered|exists/i.test(error.message) ? 'E-mail já possui login cadastrado' : 'Falha ao criar login: ' + error.message
+        );
+      }
+      // sem sessão = projeto exige confirmação por e-mail
+      confirmado = !!data.session;
+    }
+    const row = { ...perfil };
     let { error: e2 } = await this.sb.from('User').insert(row);
     if (e2 && /cpf/i.test(e2.message)) {
       // coluna cpf ainda não criada no banco — salva sem ela
       delete row.cpf;
       e2 = (await this.sb.from('User').insert(row)).error;
     }
-    if (e2) throw new Error('Login criado, mas falhou ao salvar o perfil: ' + e2.message);
+    if (e2) {
+      throw new Error(
+        /policy|permission|denied/i.test(e2.message)
+          ? 'Login criado, mas o perfil não pôde ser salvo. ' + SupabaseRepo.FALTA_FN
+          : 'Login criado, mas falhou ao salvar o perfil: ' + e2.message
+      );
+    }
     // Aviso (não é erro): o usuário existe e aparece na lista, mas precisa
     // confirmar o e-mail antes de conseguir entrar
     if (!confirmado) {
@@ -1129,11 +1143,25 @@ class SupabaseRepo implements Repo {
     return `${tag}-${String(n).padStart(4, '0')}`;
   }
 
-  // Chama a função Edge "admin-users" (operações privilegiadas de Auth)
+  // Chama a função Edge "admin-users" (operações privilegiadas de Auth e
+  // gravação da tabela "User", que o app não escreve mais diretamente).
+  //
+  // Devolve false SOMENTE quando a função não está publicada/acessível —
+  // aí quem chamou decide o que fazer. Erro de verdade vindo da função
+  // (e-mail duplicado, sem permissão, falha ao salvar) vira exceção com a
+  // mensagem original, em vez de ser confundido com "indisponível".
   private async adminUsersFn(body: Record<string, unknown>): Promise<boolean> {
     try {
       const { data, error } = await this.sb.functions.invoke('admin-users', { body });
-      if (error) return false;
+      if (error) {
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx.json === 'function') {
+          const corpo = await ctx.json().catch(() => null);
+          if (corpo?.error) throw new Error(corpo.error);
+        }
+        if (ctx?.status && ctx.status !== 404) throw new Error(error.message);
+        return false;
+      }
       if (data?.error) throw new Error(data.error);
       return true;
     } catch (e: any) {
@@ -1142,23 +1170,15 @@ class SupabaseRepo implements Repo {
     }
   }
 
+  // Mensagem única para quando a função precisa existir e não existe
+  private static readonly FALTA_FN =
+    'Publique a função "admin-users" no Supabase (Edge Functions) — arquivo supabase/functions/admin-users/index.ts';
+
   async updateUser(
     originalEmail: string,
     d: { nome: string; email: string; senha?: string; role: 'Admin' | 'Técnico'; access: string[]; cpf?: string }
   ) {
     const emailMudou = d.email.trim().toLowerCase() !== originalEmail.toLowerCase();
-    if (d.senha || emailMudou) {
-      const ok = await this.adminUsersFn({
-        action: 'update',
-        email: originalEmail,
-        novoEmail: emailMudou ? d.email.trim() : undefined,
-        novaSenha: d.senha || undefined,
-      });
-      if (!ok)
-        throw new Error(
-          'Para alterar e-mail/senha de outro usuário, publique a função "admin-users" no Supabase (Edge Functions) — arquivo supabase/functions/admin-users/index.ts'
-        );
-    }
     const ids = d.access.map((n) => this.unitId(n)).filter(Boolean);
     const rawRole = this.rawRoleByApp.get(d.role) || (d.role === 'Admin' ? 'ADMIN' : 'USER');
     const upd: Record<string, any> = {
@@ -1169,20 +1189,49 @@ class SupabaseRepo implements Repo {
       cpf: d.cpf?.trim() || null,
       updatedAt: new Date().toISOString(),
     };
+
+    // Caminho normal: login e perfil numa chamada só, com service_role.
+    const ok = await this.adminUsersFn({
+      action: 'update',
+      email: originalEmail,
+      novoEmail: emailMudou ? d.email.trim() : undefined,
+      novaSenha: d.senha || undefined,
+      perfil: upd,
+    });
+    if (ok) return;
+
+    // Fallback: a função não está publicada. Alterar e-mail/senha de outro
+    // usuário depende dela; o perfil ainda pode ser gravado direto.
+    if (d.senha || emailMudou) {
+      throw new Error('Para alterar e-mail/senha de outro usuário: ' + SupabaseRepo.FALTA_FN);
+    }
     let { error } = await this.sb.from('User').update(upd).ilike('email', originalEmail);
     if (error && /cpf/i.test(error.message)) {
       delete upd.cpf;
       error = (await this.sb.from('User').update(upd).ilike('email', originalEmail)).error;
     }
-    if (error) throw new Error('Falha ao salvar o usuário: ' + error.message);
+    if (error) {
+      throw new Error(
+        /policy|permission|denied/i.test(error.message)
+          ? 'Sem permissão para salvar o usuário. ' + SupabaseRepo.FALTA_FN
+          : 'Falha ao salvar o usuário: ' + error.message
+      );
+    }
   }
 
   async deleteUser(email: string) {
-    // tenta remover também o login (Auth) via função Edge; o cadastro na
-    // tabela User é removido de qualquer forma, o que já bloqueia o acesso
-    await this.adminUsersFn({ action: 'delete', email }).catch(() => false);
+    // A função Edge remove o login (Auth) e a linha da tabela "User".
+    if (await this.adminUsersFn({ action: 'delete', email })) return;
+    // Fallback: sem a função, remove ao menos o cadastro — o que já
+    // bloqueia o acesso, mesmo que o login continue existindo no Auth.
     const { error } = await this.sb.from('User').delete().ilike('email', email);
-    if (error) throw new Error('Falha ao excluir o usuário: ' + error.message);
+    if (error) {
+      throw new Error(
+        /policy|permission|denied/i.test(error.message)
+          ? 'Sem permissão para excluir o usuário. ' + SupabaseRepo.FALTA_FN
+          : 'Falha ao excluir o usuário: ' + error.message
+      );
+    }
   }
 
   async deleteEquipment(e: Equipment) {
@@ -1234,8 +1283,17 @@ class SupabaseRepo implements Repo {
 
   async updateUserAccess(nome: string, access: string[]) {
     const ids = access.map((n) => this.unitId(n)).filter(Boolean);
+    // Acesso por inventário é permissão: só muda via função Edge, que
+    // confere se quem pediu é administrador.
+    if (await this.adminUsersFn({ action: 'set-access', nome, allowedUnitIds: ids })) return;
     const { error } = await this.sb.from('User').update({ allowedUnitIds: ids }).eq('name', nome);
-    if (error) throw error;
+    if (error) {
+      throw new Error(
+        /policy|permission|denied/i.test(error.message)
+          ? 'Sem permissão para alterar acessos. ' + SupabaseRepo.FALTA_FN
+          : 'Falha ao salvar os acessos: ' + error.message
+      );
+    }
   }
 
   async addImport(rec: ImportRecord) {
