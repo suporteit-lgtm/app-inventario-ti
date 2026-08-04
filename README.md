@@ -1,0 +1,121 @@
+# App Inventário TI
+
+App mobile (Android + iOS, com pré-visualização web) para **inventário de equipamentos de TI**: cadastro, busca por QR code, movimentação entre responsáveis, alertas de garantia, relatórios e geração de termo de responsabilidade em PDF.
+
+Construído em **React Native + Expo (SDK 57)** com TypeScript. O backend é **Supabase** (Postgres + Auth + Edge Functions), mas o app também roda sem nenhuma configuração, em modo demonstração.
+
+## Funcionalidades
+
+- **Login** com Supabase Auth, tema claro/escuro persistido
+- **Home** — contadores por status, ações rápidas, alertas recentes e seletor de inventário (unidade)
+- **Inventário** — busca em tempo real por nome, número de série e patrimônio; filtros por tipo; leitura de QR para localizar um equipamento
+- **Detalhe** — dados completos, histórico de movimentações e ações de movimentar / gerar termo / editar
+- **Cadastro e edição** — foto via câmera ou galeria, leitura do número de série por QR
+- **Movimentações** — troca de responsável e de local, com histórico
+- **Relatórios** — exportação real em PDF e CSV
+- **Alertas** — derivados do fim de garantia e do status do equipamento
+- **Usuários e permissões** (perfil Admin) — acesso liberado por inventário, por usuário
+- **Importação de CSV** (perfil Admin) — seleção de arquivo, parse, importação e planilha modelo
+- **Termo de responsabilidade** — fluxo em 3 passos com templates (Padrão, Comodato, Devolução), geração de PDF e envio para assinatura via Clicksign
+
+## Como rodar
+
+Requer Node.js 20+.
+
+```bash
+npm install
+```
+
+```bash
+npx expo start
+```
+
+- **Android / iOS**: leia o QR code com o app **Expo Go** (ou `npm run android` com um emulador aberto).
+- **Web**: `npm run web`.
+
+### Modo demonstração (sem configuração)
+
+Sem um `.env`, o app sobe com dados simulados em memória, persistidos localmente via AsyncStorage. O login aceita qualquer senha — use um dos usuários de exemplo definidos em [src/data/mock.ts](src/data/mock.ts).
+
+### Modo Supabase
+
+Crie o `.env` a partir do modelo e preencha com os dados do seu projeto (Supabase → Project Settings → API):
+
+```bash
+cp .env.example .env
+```
+
+```
+EXPO_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
+```
+
+Reinicie o `expo start` depois de qualquer alteração no `.env`.
+
+> As duas variáveis usam o prefixo `EXPO_PUBLIC_`, ou seja, ficam embutidas no bundle do app e são visíveis para quem instalar o APK. Isso é o esperado para a *anon key* do Supabase — **a proteção real dos dados vem do RLS**, não do sigilo dessa chave. Confira as políticas antes de distribuir qualquer build.
+
+## Banco de dados
+
+Os scripts ficam em [supabase/](supabase). Execute-os no **SQL Editor** do projeto Supabase:
+
+| Arquivo | O que faz |
+|---|---|
+| `setup-app.sql` … `setup-app-v5.sql` | criação e evolução do schema do app (aplicar em ordem) |
+| `setup-linhas-corporativas.sql` | tabelas de linhas corporativas |
+| `corrigir-permissoes.sql` | grants e RLS para `anon`, `authenticated` e `service_role` |
+| `restore-after-reset.sql` | reconstrói permissões após um reset do banco |
+| `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
+
+Tabelas principais: `Unit` (inventários), `Category` (tipos de equipamento), `Equipment`, `User` (papel e inventários liberados) e `AssignmentHistory` (movimentações). Os alertas são derivados de `warrantyEndDate` combinado com `Settings.warrantyWarningDays`.
+
+Depois de rodar os scripts, crie os logins em **Authentication → Users**. O e-mail do login precisa existir também na tabela `User` — é o vínculo com nome, papel e permissões.
+
+### Edge Functions
+
+Em [supabase/functions/](supabase/functions):
+
+- `admin-users` — criação e gestão de usuários pelo app (roda com `service_role`)
+- `clicksign-send` — envia o termo em PDF para assinatura
+- `clicksign-webhook` — recebe o retorno de assinatura da Clicksign
+
+O token da Clicksign é configurado como **secret da Edge Function** (`supabase secrets set`), nunca no código do app.
+
+## Build e distribuição
+
+Os builds são feitos na nuvem pelo **EAS Build** (requer conta em expo.dev). O `eas.json` **não é versionado**, porque carrega as variáveis de ambiente do projeto — crie o seu a partir do modelo:
+
+```bash
+cp eas.json.example eas.json
+```
+
+```bash
+npm install -g eas-cli && eas login
+```
+
+```bash
+eas build -p android --profile preview
+```
+
+O perfil `preview` gera um APK instalável (o terminal devolve link e QR ao final). Para a Play Store use `--profile production` (gera AAB); para iOS, `eas build -p ios`, que exige conta Apple Developer.
+
+Alternativa ao `env` no `eas.json`: guardar os valores como secrets do EAS, com `eas secret:create`.
+
+## Estrutura
+
+```
+src/
+  components/   UI reutilizável (cards, chips, tab bar, sheets, toast…)
+  data/         mock.ts (dados demo) e repo.ts (camada de dados: mock ⇄ Supabase)
+  lib/          supabase.ts, clicksign.ts, export.ts (PDF/CSV), máscaras
+  nav/          navegação em pilha + estado dos overlays
+  overlays/     sheets globais e scanner de QR
+  pdf/          template HTML do termo de responsabilidade
+  screens/      as telas do app
+  state/        AppContext (sessão, tema, inventário ativo, dados)
+  theme/        tokens de design (claro/escuro)
+supabase/       scripts SQL + Edge Functions
+```
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).

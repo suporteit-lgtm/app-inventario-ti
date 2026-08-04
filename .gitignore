@@ -30,8 +30,20 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files (o .env.example, com placeholders, é versionado de propósito)
+.env
+.env.*
+!.env.example
+
+# EAS: os perfis de build carregam URL/anon key do Supabase.
+# Versionamos apenas o modelo; o arquivo real fica local.
+eas.json
+
+# credenciais / chaves diversas
+*.keystore
+google-services.json
+GoogleService-Info.plist
+credentials.json
 
 # typescript
 *.tsbuildinfo
