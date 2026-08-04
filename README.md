@@ -63,6 +63,7 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 | Arquivo | O que faz |
 |---|---|
 | `restore-after-reset.sql` | **script principal**: colunas extras do app, tabela `EquipmentLog`, RLS, grants e templates de termo |
+| `endurecer-acesso.sql` | rode depois do principal: fecha o acesso do visitante não-logado e faz a divisão por inventário valer no banco |
 | `setup-linhas-corporativas.sql` | colunas da categoria "Linhas corporativas" (operadora, ICCID, telefone…) |
 | `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
@@ -71,6 +72,14 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 Tabelas principais: `Unit` (inventários), `Category` (tipos de equipamento), `Equipment`, `User` (papel e inventários liberados) e `AssignmentHistory` (movimentações). Os alertas são derivados de `warrantyEndDate` combinado com `Settings.warrantyWarningDays`.
 
 Depois de rodar os scripts, crie os logins em **Authentication → Users**. O e-mail do login precisa existir também na tabela `User` — é o vínculo com nome, papel e permissões.
+
+### Controle de acesso
+
+O acesso é por inventário: o Admin define, na tela de Usuários, quais unidades cada pessoa enxerga (coluna `User.allowedUnitIds`, que aceita quantas unidades forem necessárias). Quem tem papel `ADMIN` enxerga todas.
+
+Com o `endurecer-acesso.sql` aplicado, essa regra passa a valer **no banco**, não só na interface: as políticas de RLS de `Equipment`, `Unit` e `Category` leem a mesma lista, e `AssignmentHistory` / `EquipmentLog` seguem a visibilidade do equipamento. Usuário sem unidade configurada não enxerga nada — a falha é fechada e visível, em vez de liberar tudo em silêncio.
+
+Um detalhe importante: as tabelas pertencem ao papel `postgres`, e dono de tabela não é submetido a RLS. Se o sistema web compartilha este banco conectando como `postgres` (via Prisma / pooler), ele não é afetado pelas políticas. Nenhum script usa `force row level security`, justamente para preservar essa isenção.
 
 ### Edge Functions
 
