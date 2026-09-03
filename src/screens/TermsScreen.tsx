@@ -74,6 +74,15 @@ export const TermsScreen: React.FC = () => {
   };
   const preview = splitTemplate(template.content, termoData);
 
+  // Campos sem valor viram linha pontilhada no PDF. Sem este aviso, o termo
+  // sai "errado" em silêncio e não há como saber de onde vinha cada dado.
+  const faltando = [
+    !unidadeAtiva?.endereco?.trim() && { campo: 'endereço da unidade', onde: 'Configurações › Locais e unidades' },
+    !unidadeAtiva?.cnpj?.trim() && { campo: 'CNPJ da unidade', onde: 'Configurações › Locais e unidades' },
+    !dadosColab?.cpfUsuario?.trim() && { campo: 'CPF do colaborador', onde: 'Inventário › o equipamento › Editar › CPF do usuário' },
+    !app.session?.cpf?.trim() && { campo: 'seu CPF (responsável de T.I.)', onde: 'Configurações › Meu CPF' },
+  ].filter(Boolean) as { campo: string; onde: string }[];
+
   const next = () => {
     if (step === 1 && !colabNome) return app.showToast('Selecione um colaborador');
     if (step === 2 && !selIds.length) return app.showToast('Selecione ao menos um equipamento');
@@ -394,6 +403,29 @@ export const TermsScreen: React.FC = () => {
                 )}
               </View>
             )}
+            {faltando.length > 0 && (
+              <View
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.dark ? theme.tintbd : '#9db4d8',
+                  backgroundColor: theme.tint,
+                  padding: 12,
+                  paddingHorizontal: 14,
+                  gap: 4,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: theme.chipFg }}>
+                  {faltando.length === 1 ? 'Um campo sairá em branco' : `${faltando.length} campos sairão em branco`}
+                </Text>
+                {faltando.map((f) => (
+                  <Text key={f.campo} style={{ fontSize: 12.5, lineHeight: 19, color: theme.chipFg }}>
+                    • {f.campo} — preencha em {f.onde}
+                  </Text>
+                ))}
+              </View>
+            )}
+
             <Card style={{ padding: 20, paddingHorizontal: 18 }}>
               <Text style={{ textAlign: 'center', fontWeight: '700', fontSize: 13.5, color: theme.text, marginBottom: 10 }}>
                 {preview.titulo || termoTitulo(template.name)}

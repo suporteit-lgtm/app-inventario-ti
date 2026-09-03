@@ -67,6 +67,7 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 | `setup-linhas-corporativas.sql` | colunas da categoria "Linhas corporativas" (operadora, ICCID, telefone…) |
 | `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
+| `atualizar-termo-devolucao.sql` | põe o texto oficial completo no termo de devolução, quando o banco ainda tem o rascunho curto (sem endereço, CNPJ e CPFs) |
 | `setup-app.sql` … `setup-app-v5.sql` | histórico, superados pelo `restore-after-reset.sql` |
 
 Tabelas principais: `Unit` (inventários), `Category` (tipos de equipamento), `Equipment`, `User` (papel e inventários liberados) e `AssignmentHistory` (movimentações). Os alertas são derivados de `warrantyEndDate` combinado com `Settings.warrantyWarningDays`.

@@ -171,7 +171,24 @@ const TEMPLATES_LEGADOS = [
 ];
 
 const ehFormatoDoApp = (c: string) => /\{(NOME|EQUIPAMENTOS|CPF|DATA)\}/.test(c || '');
-const ehLegado = (c: string) => TEMPLATES_LEGADOS.some((s) => (c || '').includes(s));
+// Compara em NFC: o mesmo texto gravado com acentos decompostos (NFD) não
+// bateria num includes() direto
+const nfc = (c: string) => (c || '').normalize('NFC');
+const ehLegado = (c: string) => TEMPLATES_LEGADOS.some((s) => nfc(c).includes(nfc(s)));
+
+// Campos que os documentos oficiais preenchem no cabeçalho e no bloco de
+// assinatura. Um texto do banco que não traz NENHUM deles, e ainda é uma
+// fração do tamanho do oficial, é rascunho de versão antiga — não uma
+// personalização. Sobrescrever o oficial com ele faz o endereço, o CNPJ e
+// os CPFs sumirem do termo sem aviso nenhum.
+const CAMPOS_DO_OFICIAL = ['{ENDERECO}', '{CNPJ_EMPRESA}', '{CPF_RESPONSAVEL_TI}'];
+
+const ehRascunho = (doBanco: string, oficial: string) => {
+  const esperados = CAMPOS_DO_OFICIAL.filter((ph) => oficial.includes(ph));
+  if (!esperados.length) return false;
+  if (esperados.some((ph) => (doBanco || '').includes(ph))) return false;
+  return (doBanco || '').length < oficial.length / 4;
+};
 
 const chaveTemplate = (nome: string) => {
   const n = (nome || '')
@@ -193,8 +210,10 @@ export function mergeTemplates(rows: any[]): TermoTemplateDB[] {
     .filter((t) => ehFormatoDoApp(t.content) && !ehLegado(t.content))
     .forEach((t) => {
       const i = out.findIndex((m) => chaveTemplate(m.name) === chaveTemplate(t.name));
-      if (i >= 0) out[i] = t;
-      else out.push(t);
+      if (i < 0) return void out.push(t);
+      const oficial = TERMO_TEMPLATES_PADRAO.find((m) => chaveTemplate(m.name) === chaveTemplate(t.name));
+      if (oficial && ehRascunho(t.content, oficial.content)) return;
+      out[i] = t;
     });
   return out;
 }
