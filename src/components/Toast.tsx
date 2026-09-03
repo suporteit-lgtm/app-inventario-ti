@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Text } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import { useApp } from '../state/AppContext';
 
 export const ToastHost: React.FC = () => {
@@ -21,22 +21,30 @@ export const ToastHost: React.FC = () => {
       style={{
         position: 'absolute',
         bottom: 136,
-        alignSelf: 'center',
-        backgroundColor: '#0f172a',
-        paddingHorizontal: 18,
-        paddingVertical: 11,
-        borderRadius: 12,
+        left: 16,
+        right: 16,
+        alignItems: 'center',
         zIndex: 70,
         opacity: anim,
         transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-        shadowColor: '#000',
-        shadowOpacity: 0.3,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 8,
       }}
     >
-      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{toast}</Text>
+      <View
+        style={{
+          maxWidth: 460,
+          backgroundColor: '#0f172a',
+          paddingHorizontal: 18,
+          paddingVertical: 11,
+          borderRadius: 12,
+          shadowColor: '#000',
+          shadowOpacity: 0.3,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', lineHeight: 19 }}>{toast}</Text>
+      </View>
     </Animated.View>
   );
 };

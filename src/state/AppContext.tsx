@@ -98,7 +98,7 @@ interface AppCtx {
   ) => Promise<void>;
   deleteUser: (email: string) => Promise<void>;
   deleteEquipment: (e: Equipment) => Promise<void>;
-  saveUnit: (u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }) => Promise<void>;
+  saveUnit: (u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }) => Promise<string[]>;
   deleteUnit: (id: string) => Promise<void>;
   updateMyCpf: (cpf: string) => Promise<void>;
   backupCfg: BackupCfg;
@@ -175,7 +175,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const showToast = (msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 2200);
+    // Um erro do banco é longo; 2,2 s não dá para ler. O tempo acompanha
+    // o tamanho da mensagem, com teto para não ficar preso na tela.
+    const ms = Math.min(9000, Math.max(2200, 1200 + msg.length * 55));
+    toastTimer.current = setTimeout(() => setToast(''), ms);
   };
 
   const allInvs = db.inventories.map((i) => i.nome);
@@ -339,8 +342,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveUnit = async (u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }) => {
-    await repo.saveUnit(u);
+    const ausentes = await repo.saveUnit(u);
     await reload();
+    return ausentes;
   };
 
   const updateMyCpf = async (cpf: string) => {

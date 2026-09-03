@@ -65,6 +65,7 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 | `restore-after-reset.sql` | **script principal**: colunas extras do app, tabela `EquipmentLog`, RLS, grants e templates de termo |
 | `endurecer-acesso.sql` | rode depois do principal: fecha o acesso do visitante não-logado e faz a divisão por inventário valer no banco |
 | `setup-linhas-corporativas.sql` | colunas da categoria "Linhas corporativas" (operadora, ICCID, telefone…) |
+| `adicionar-colunas-unidade.sql` | colunas `cnpj`, `address` e `nickname` da tabela `Unit` — sem elas o termo sai sem CNPJ/endereço e a tela de unidades não salva |
 | `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
 | `atualizar-termo-devolucao.sql` | põe o texto oficial completo no termo de devolução, quando o banco ainda tem o rascunho curto (sem endereço, CNPJ e CPFs) |

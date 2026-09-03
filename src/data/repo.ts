@@ -71,7 +71,8 @@ export interface Repo {
   ): Promise<void>;
   deleteUser(email: string): Promise<void>;
   deleteEquipment(e: Equipment): Promise<void>;
-  saveUnit(u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }): Promise<void>;
+  /** Devolve as colunas que o banco não tem — o resto foi salvo. */
+  saveUnit(u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }): Promise<string[]>;
   deleteUnit(id: string): Promise<void>;
   updateMyCpf(email: string, cpf: string): Promise<void>;
   updateUserAccess(nome: string, access: string[]): Promise<void>;
@@ -157,6 +158,13 @@ const relTime = (iso: string): string => {
   if (diff === 1) return 'ontem';
   if (diff < 30) return `${diff} d`;
   return isoToBR(iso);
+};
+
+// A coluna não existe no banco? O PostgREST responde "schema cache" e o
+// Postgres, "does not exist" — as duas formas aparecem conforme o caminho.
+const colunaAusente = (error: any, coluna: string) => {
+  const msg = `${error?.message || ''} ${error?.details || ''}`;
+  return msg.toLowerCase().includes(coluna.toLowerCase()) && /schema cache|does not exist/i.test(msg);
 };
 
 /* ------------------------- templates de termo ------------------------- */
@@ -505,6 +513,7 @@ class MockRepo implements Repo {
       ];
     }
     await this.persist();
+    return []; // no modo demonstração nunca falta coluna
   }
 
   async updateMyCpf(email: string, cpf: string) {
@@ -1271,15 +1280,24 @@ class SupabaseRepo implements Repo {
       u.id
         ? (await this.sb.from('Unit').update(row).eq('id', u.id)).error
         : (await this.sb.from('Unit').insert({ id: genId(), createdAt: new Date().toISOString(), ...row })).error;
+
+    // "name" existe sempre; as demais são colunas que só este app usa e podem
+    // não existir no banco compartilhado. Antes, qualquer uma faltando
+    // derrubava a gravação inteira — inclusive a troca do nome, que é a
+    // coluna que sempre existe. Agora a coluna ausente é retirada e o resto
+    // é salvo, e quem chamou recebe a lista para avisar na tela.
+    const OPCIONAIS = ['nickname', 'cnpj', 'address'];
+    const ausentes: string[] = [];
     let error = await exec();
-    if (error && /nickname/i.test(error.message)) {
-      if (u.apelido?.trim())
-        throw new Error('Para salvar o nome curto, rode o setup-app-v5.sql no SQL Editor do Supabase.');
-      // sem apelido informado: salva os demais campos normalmente
-      delete row.nickname;
+    while (error) {
+      const faltando = OPCIONAIS.find((c) => !ausentes.includes(c) && colunaAusente(error, c));
+      if (!faltando) break;
+      ausentes.push(faltando);
+      delete row[faltando];
       error = await exec();
     }
     if (error) throw new Error('Falha ao salvar a unidade: ' + error.message);
+    return ausentes;
   }
 
   async updateMyCpf(email: string, cpf: string) {

@@ -3,6 +3,7 @@ import { Animated, Modal, Pressable, useWindowDimensions, View } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../state/AppContext';
 import { AjustaTeclado } from './teclado';
+import { ToastHost } from './Toast';
 
 export const Sheet: React.FC<{ visible: boolean; onClose: () => void; children: React.ReactNode }> = ({
   visible,
@@ -62,6 +63,10 @@ export const Sheet: React.FC<{ visible: boolean; onClose: () => void; children: 
           {children}
         </Animated.View>
       </AjustaTeclado>
+      {/* O Modal do React Native abre numa janela própria, acima de toda a
+          árvore do app — o ToastHost da raiz ficaria ATRÁS da sheet e a
+          mensagem, ilegível. Por isso a sheet desenha o seu próprio. */}
+      <ToastHost />
     </Modal>
   );
 };

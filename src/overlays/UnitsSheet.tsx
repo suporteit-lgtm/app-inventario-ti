@@ -44,8 +44,15 @@ export const UnitsSheet: React.FC = () => {
     if (!nome.trim()) return app.showToast('Informe o nome da unidade');
     setSalvando(true);
     try {
-      await app.saveUnit({ id: editId, nome, cnpj, endereco, apelido });
-      app.showToast(editId ? 'Unidade atualizada' : 'Unidade criada');
+      const ausentes = await app.saveUnit({ id: editId, nome, cnpj, endereco, apelido });
+      const rotulos: Record<string, string> = { nickname: 'nome curto', cnpj: 'CNPJ', address: 'endereço' };
+      app.showToast(
+        ausentes.length
+          ? `Nome salvo, mas o banco não tem a coluna de ${ausentes.map((c) => rotulos[c] || c).join(', ')}. Rode supabase/adicionar-colunas-unidade.sql no SQL Editor.`
+          : editId
+          ? 'Unidade atualizada'
+          : 'Unidade criada'
+      );
       setEditId(null);
       setNome('');
       setApelido('');
@@ -165,6 +172,7 @@ export const UnitsSheet: React.FC = () => {
                   onPress={() => {
                     setEditId(null);
                     setNome('');
+                    setApelido('');
                     setCnpj('');
                     setEndereco('');
                   }}
