@@ -9,6 +9,13 @@
 --
 -- Seguro: só concede acesso, não altera nem apaga dados.
 -- O sistema web não é afetado (o Prisma conecta como dono das tabelas).
+--
+-- >>> CUIDADO se você já rodou o "endurecer-tabela-user.sql":
+--   a linha que concede escrita a "authenticated" (mais abaixo) DESFAZ
+--   aquele endurecimento e devolve a qualquer pessoa logada o poder de
+--   se promover a ADMIN direto na tabela "User". Para só destravar as
+--   Edge Functions sem reabrir isso, use
+--   "permitir-escrita-edge-functions.sql".
 -- =====================================================================
 
 -- 1) Acesso ao schema

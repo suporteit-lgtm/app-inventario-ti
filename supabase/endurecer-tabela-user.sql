@@ -35,10 +35,16 @@ create policy "app_user_leitura" on "User"
   using (true);
 
 -- Nenhuma política de insert/update/delete para "authenticated".
--- Sem política, o RLS nega — e a service_role (que a função Edge usa)
--- passa por cima do RLS, então a função continua gravando normalmente.
+-- Sem política, o RLS nega.
 
--- Tira as permissões de escrita também no nível de tabela, para o erro
+-- A service_role (identidade das Edge Functions) precisa PODER escrever
+-- antes de tirarmos a escrita do app. Atenção: service_role ignora RLS,
+-- mas NÃO ignora GRANT de tabela — sem esta linha, a função "admin-users"
+-- passa na checagem de administrador e mesmo assim apanha do banco com
+-- "permission denied for table User", e a tela de Usuários para de salvar.
+grant insert, update, delete on "User" to service_role;
+
+-- Só agora tira a escrita do app, também no nível de tabela, para o erro
 -- aparecer como "permission denied" em vez de sumir silenciosamente.
 revoke insert, update, delete on "User" from authenticated;
 

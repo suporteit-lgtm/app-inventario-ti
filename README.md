@@ -68,6 +68,7 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 | `adicionar-colunas-unidade.sql` | colunas `cnpj`, `address` e `nickname` da tabela `Unit` — sem elas o termo sai sem CNPJ/endereço e a tela de unidades não salva |
 | `adicionar-coluna-cpf-usuario.sql` | coluna `cpf` da tabela `User` e recarga do cache de schema — sem ela o CPF do usuário não grava |
 | `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
+| `permitir-escrita-edge-functions.sql` | dá escrita à `service_role` sem reabrir a tabela `User` para o app — corrige `permission denied for table User` ao salvar usuários |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |
 | `atualizar-termo-devolucao.sql` | põe o texto oficial completo no termo de devolução, quando o banco ainda tem o rascunho curto (sem endereço, CNPJ e CPFs) |
 | `setup-app.sql` … `setup-app-v5.sql` | histórico, superados pelo `restore-after-reset.sql` |
