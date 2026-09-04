@@ -65,10 +65,11 @@ export interface Repo {
     cpf?: string
   ): Promise<string | null>;
   changePassword(senha: string): Promise<void>;
+  /** Devolve um aviso quando salvou só em parte (ex.: o CPF foi recusado). */
   updateUser(
     originalEmail: string,
     d: { nome: string; email: string; senha?: string; role: 'Admin' | 'Técnico'; access: string[]; cpf?: string }
-  ): Promise<void>;
+  ): Promise<string | null>;
   deleteUser(email: string): Promise<void>;
   deleteEquipment(e: Equipment): Promise<void>;
   /** Devolve as colunas que o banco não tem — o resto foi salvo. */
@@ -482,6 +483,7 @@ class MockRepo implements Repo {
         : u
     );
     await this.persist();
+    return null; // no modo demonstração nunca falta coluna
   }
 
   async deleteUser(email: string) {
@@ -1106,9 +1108,8 @@ class SupabaseRepo implements Repo {
 
     // Caminho normal: a função Edge cria o login já confirmado E grava o
     // perfil com service_role — a tabela "User" não é escrita pelo app.
-    if (await this.adminUsersFn({ action: 'create', email: email.trim(), novaSenha: senha, perfil })) {
-      return null;
-    }
+    const resp = await this.adminUsersFn({ action: 'create', email: email.trim(), novaSenha: senha, perfil });
+    if (resp) return resp.aviso || null;
 
     // Fallback (função ainda não publicada): signUp comum + gravação
     // direta. Deixa de funcionar quando o RLS da tabela "User" for
@@ -1127,11 +1128,13 @@ class SupabaseRepo implements Repo {
       confirmado = !!data.session;
     }
     const row = { ...perfil };
+    let cpfIgnorado = false;
     let { error: e2 } = await this.sb.from('User').insert(row);
     if (e2 && /cpf/i.test(e2.message)) {
-      // coluna cpf ainda não criada no banco — salva sem ela
+      // o banco recusou a coluna cpf — grava sem ela, mas avisa depois
       delete row.cpf;
       e2 = (await this.sb.from('User').insert(row)).error;
+      cpfIgnorado = !e2;
     }
     if (e2) {
       throw new Error(
@@ -1145,7 +1148,7 @@ class SupabaseRepo implements Repo {
     if (!confirmado) {
       return 'Usuário criado, mas só entrará após confirmar o e-mail. Defina uma senha para ele em Usuários para liberá-lo na hora.';
     }
-    return null;
+    return cpfIgnorado ? SupabaseRepo.AVISO_CPF : null;
   }
 
   async changePassword(senha: string) {
@@ -1178,7 +1181,7 @@ class SupabaseRepo implements Repo {
   // aí quem chamou decide o que fazer. Erro de verdade vindo da função
   // (e-mail duplicado, sem permissão, falha ao salvar) vira exceção com a
   // mensagem original, em vez de ser confundido com "indisponível".
-  private async adminUsersFn(body: Record<string, unknown>): Promise<boolean> {
+  private async adminUsersFn(body: Record<string, unknown>): Promise<any | null> {
     try {
       const { data, error } = await this.sb.functions.invoke('admin-users', { body });
       if (error) {
@@ -1188,15 +1191,20 @@ class SupabaseRepo implements Repo {
           if (corpo?.error) throw new Error(corpo.error);
         }
         if (ctx?.status && ctx.status !== 404) throw new Error(error.message);
-        return false;
+        return null;
       }
       if (data?.error) throw new Error(data.error);
-      return true;
+      return data || {};
     } catch (e: any) {
       if (e?.message && !/Failed to send|FunctionsFetchError|not found/i.test(e.message)) throw e;
-      return false;
+      return null;
     }
   }
+
+  // O banco recusou a coluna "cpf". Antes o CPF era descartado em
+  // silêncio nos dois caminhos e a tela dizia "usuário atualizado".
+  private static readonly AVISO_CPF =
+    'Usuário salvo, mas o CPF não: a coluna "cpf" da tabela "User" não existe, ou o cache de schema do PostgREST está velho. Rode supabase/adicionar-coluna-cpf-usuario.sql no SQL Editor.';
 
   // Mensagem única para quando a função precisa existir e não existe
   private static readonly FALTA_FN =
@@ -1219,24 +1227,26 @@ class SupabaseRepo implements Repo {
     };
 
     // Caminho normal: login e perfil numa chamada só, com service_role.
-    const ok = await this.adminUsersFn({
+    const resp = await this.adminUsersFn({
       action: 'update',
       email: originalEmail,
       novoEmail: emailMudou ? d.email.trim() : undefined,
       novaSenha: d.senha || undefined,
       perfil: upd,
     });
-    if (ok) return;
+    if (resp) return resp.aviso || null;
 
     // Fallback: a função não está publicada. Alterar e-mail/senha de outro
     // usuário depende dela; o perfil ainda pode ser gravado direto.
     if (d.senha || emailMudou) {
       throw new Error('Para alterar e-mail/senha de outro usuário: ' + SupabaseRepo.FALTA_FN);
     }
+    let cpfIgnorado = false;
     let { error } = await this.sb.from('User').update(upd).ilike('email', originalEmail);
     if (error && /cpf/i.test(error.message)) {
       delete upd.cpf;
       error = (await this.sb.from('User').update(upd).ilike('email', originalEmail)).error;
+      cpfIgnorado = !error;
     }
     if (error) {
       throw new Error(
@@ -1245,6 +1255,7 @@ class SupabaseRepo implements Repo {
           : 'Falha ao salvar o usuário: ' + error.message
       );
     }
+    return cpfIgnorado ? SupabaseRepo.AVISO_CPF : null;
   }
 
   async deleteUser(email: string) {

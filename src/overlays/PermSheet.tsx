@@ -43,9 +43,9 @@ export const PermSheet: React.FC = () => {
     if (cpf.trim() && !cpfValido(cpf)) return app.showToast('CPF inválido');
     setSalvando(true);
     try {
-      await app.updateUser(user.email, { nome, email, senha: senha || undefined, role, access, cpf: cpf || undefined });
+      const aviso = await app.updateUser(user.email, { nome, email, senha: senha || undefined, role, access, cpf: cpf || undefined });
       nav.setPermUser(null);
-      app.showToast('Usuário atualizado');
+      app.showToast(aviso || 'Usuário atualizado');
     } catch (e: any) {
       app.showToast(e?.message || 'Falha ao salvar');
     } finally {

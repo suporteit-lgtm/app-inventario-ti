@@ -18,6 +18,11 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
+// Devolvido quando o banco recusa a coluna "cpf". Antes o CPF era
+// descartado em silêncio e a tela dizia "usuário atualizado".
+const AVISO_CPF =
+  'Usuário salvo, mas o CPF não: a coluna "cpf" da tabela "User" não existe, ou o cache de schema do PostgREST está velho. Rode supabase/adicionar-coluna-cpf-usuario.sql no SQL Editor.';
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
@@ -42,7 +47,9 @@ Deno.serve(async (req) => {
     // Grava na tabela "User" usando a service_role. É isto que permite
     // fechar a tabela para o app: o cargo e os acessos passam a só mudar
     // por aqui, depois da checagem de administrador feita acima.
-    // Reexecuta sem a coluna "cpf" se ela ainda não existir no banco.
+    // Se o banco recusar a coluna "cpf", grava o resto para não perder a
+    // edição — mas DEVOLVE o aviso. Antes essa segunda tentativa zerava o
+    // erro e o CPF sumia sem que a tela soubesse.
     const gravarPerfil = async (
       op: 'insert' | 'update',
       dados: Record<string, unknown>,
@@ -53,11 +60,13 @@ Deno.serve(async (req) => {
           ? await admin.from('User').insert(d)
           : await admin.from('User').update(d).ilike('email', alvoEmail!);
       let { error } = await exec(dados);
+      let cpfIgnorado = false;
       if (error && /cpf/i.test(error.message)) {
         const { cpf: _ignorado, ...semCpf } = dados;
         ({ error } = await exec(semCpf));
+        cpfIgnorado = !error;
       }
-      return error;
+      return { error, cpfIgnorado };
     };
 
     // Acessos por inventário (tela de Permissões). Identifica pelo nome,
@@ -89,7 +98,7 @@ Deno.serve(async (req) => {
       // "perfil" só vem das versões novas do app; sem ele a função se
       // comporta como antes e o app grava a linha por conta própria.
       if (perfil) {
-        const erroPerfil = await gravarPerfil('insert', perfil);
+        const { error: erroPerfil, cpfIgnorado } = await gravarPerfil('insert', perfil);
         if (erroPerfil) {
           // desfaz o login para não deixar usuário órfão no Auth
           const { data: l2 } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -97,6 +106,7 @@ Deno.serve(async (req) => {
           if (criado) await admin.auth.admin.deleteUser(criado.id);
           return json({ error: 'Login criado, mas falhou ao salvar o perfil: ' + erroPerfil.message }, 400);
         }
+        if (cpfIgnorado) return json({ ok: true, aviso: AVISO_CPF });
       }
       return json({ ok: true });
     }
@@ -121,8 +131,9 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 400);
       }
       if (perfil) {
-        const erroPerfil = await gravarPerfil('update', perfil, email);
+        const { error: erroPerfil, cpfIgnorado } = await gravarPerfil('update', perfil, email);
         if (erroPerfil) return json({ error: 'Falha ao salvar o usuário: ' + erroPerfil.message }, 400);
+        if (cpfIgnorado) return json({ ok: true, aviso: AVISO_CPF });
       }
       return json({ ok: true });
     }

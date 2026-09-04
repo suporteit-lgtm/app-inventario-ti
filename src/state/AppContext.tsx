@@ -95,7 +95,7 @@ interface AppCtx {
   updateUser: (
     originalEmail: string,
     d: { nome: string; email: string; senha?: string; role: 'Admin' | 'Técnico'; access: string[]; cpf?: string }
-  ) => Promise<void>;
+  ) => Promise<string | null>;
   deleteUser: (email: string) => Promise<void>;
   deleteEquipment: (e: Equipment) => Promise<void>;
   saveUnit: (u: { id: string | null; nome: string; cnpj?: string; endereco?: string; apelido?: string }) => Promise<string[]>;
@@ -322,12 +322,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     originalEmail: string,
     d: { nome: string; email: string; senha?: string; role: 'Admin' | 'Técnico'; access: string[]; cpf?: string }
   ) => {
-    await repo.updateUser(originalEmail, d);
+    const aviso = await repo.updateUser(originalEmail, d);
     // se o próprio usuário logado foi editado, atualiza a sessão (nome/CPF no termo)
     if (session && originalEmail.toLowerCase() === session.email.toLowerCase()) {
-      setSession({ ...session, nome: d.nome, email: d.email, role: d.role, access: d.access, cpf: d.cpf });
+      setSession({ ...session, nome: d.nome, email: d.email, role: d.role, access: d.access, cpf: aviso ? undefined : d.cpf });
     }
     await reload();
+    return aviso;
   };
 
   const deleteUser = async (email: string) => {
