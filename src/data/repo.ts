@@ -161,6 +161,13 @@ const relTime = (iso: string): string => {
   return isoToBR(iso);
 };
 
+// O banco recusou a coluna "cpf". Antes o CPF era descartado em silêncio
+// nos dois caminhos e a tela dizia "usuário atualizado". A mensagem carrega
+// o motivo ORIGINAL do banco: sem ele resta adivinhar entre coluna ausente,
+// cache de schema velho, permissão e constraint.
+const avisoCpf = (motivo: string, origem: string) =>
+  `Usuário salvo, mas o CPF não. O banco recusou a coluna "cpf" (${origem}): ${motivo}`;
+
 // A coluna não existe no banco? O PostgREST responde "schema cache" e o
 // Postgres, "does not exist" — as duas formas aparecem conforme o caminho.
 const colunaAusente = (error: any, coluna: string) => {
@@ -1128,13 +1135,14 @@ class SupabaseRepo implements Repo {
       confirmado = !!data.session;
     }
     const row = { ...perfil };
-    let cpfIgnorado = false;
+    let motivoCpf = '';
     let { error: e2 } = await this.sb.from('User').insert(row);
     if (e2 && /cpf/i.test(e2.message)) {
       // o banco recusou a coluna cpf — grava sem ela, mas avisa depois
+      const motivo = e2.message;
       delete row.cpf;
       e2 = (await this.sb.from('User').insert(row)).error;
-      cpfIgnorado = !e2;
+      if (!e2) motivoCpf = motivo;
     }
     if (e2) {
       throw new Error(
@@ -1148,7 +1156,7 @@ class SupabaseRepo implements Repo {
     if (!confirmado) {
       return 'Usuário criado, mas só entrará após confirmar o e-mail. Defina uma senha para ele em Usuários para liberá-lo na hora.';
     }
-    return cpfIgnorado ? SupabaseRepo.AVISO_CPF : null;
+    return motivoCpf ? avisoCpf(motivoCpf, 'gravação direta') : null;
   }
 
   async changePassword(senha: string) {
@@ -1201,10 +1209,6 @@ class SupabaseRepo implements Repo {
     }
   }
 
-  // O banco recusou a coluna "cpf". Antes o CPF era descartado em
-  // silêncio nos dois caminhos e a tela dizia "usuário atualizado".
-  private static readonly AVISO_CPF =
-    'Usuário salvo, mas o CPF não: a coluna "cpf" da tabela "User" não existe, ou o cache de schema do PostgREST está velho. Rode supabase/adicionar-coluna-cpf-usuario.sql no SQL Editor.';
 
   // Mensagem única para quando a função precisa existir e não existe
   private static readonly FALTA_FN =
@@ -1241,21 +1245,24 @@ class SupabaseRepo implements Repo {
     if (d.senha || emailMudou) {
       throw new Error('Para alterar e-mail/senha de outro usuário: ' + SupabaseRepo.FALTA_FN);
     }
-    let cpfIgnorado = false;
+    let motivoCpf = '';
     let { error } = await this.sb.from('User').update(upd).ilike('email', originalEmail);
     if (error && /cpf/i.test(error.message)) {
+      const motivo = error.message;
       delete upd.cpf;
       error = (await this.sb.from('User').update(upd).ilike('email', originalEmail)).error;
-      cpfIgnorado = !error;
+      if (!error) motivoCpf = motivo;
     }
     if (error) {
+      // A mensagem do banco vai junto mesmo no caso "sem permissão":
+      // escondê-la já custou tempo de diagnóstico aqui.
       throw new Error(
         /policy|permission|denied/i.test(error.message)
-          ? 'Sem permissão para salvar o usuário. ' + SupabaseRepo.FALTA_FN
+          ? 'Sem permissão para salvar o usuário. ' + SupabaseRepo.FALTA_FN + ' (banco: ' + error.message + ')'
           : 'Falha ao salvar o usuário: ' + error.message
       );
     }
-    return cpfIgnorado ? SupabaseRepo.AVISO_CPF : null;
+    return motivoCpf ? avisoCpf(motivoCpf, 'gravação direta') : null;
   }
 
   async deleteUser(email: string) {

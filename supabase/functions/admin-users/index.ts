@@ -20,8 +20,10 @@ const json = (body: unknown, status = 200) =>
 
 // Devolvido quando o banco recusa a coluna "cpf". Antes o CPF era
 // descartado em silêncio e a tela dizia "usuário atualizado".
-const AVISO_CPF =
-  'Usuário salvo, mas o CPF não: a coluna "cpf" da tabela "User" não existe, ou o cache de schema do PostgREST está velho. Rode supabase/adicionar-coluna-cpf-usuario.sql no SQL Editor.';
+// Carrega a mensagem ORIGINAL do banco: sem ela sobra só palpite sobre o
+// motivo — coluna ausente, cache velho, permissão, constraint…
+const avisoCpf = (motivo: string) =>
+  'Usuário salvo, mas o CPF não. O banco recusou a coluna "cpf": ' + motivo;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -55,18 +57,35 @@ Deno.serve(async (req) => {
       dados: Record<string, unknown>,
       alvoEmail?: string
     ) => {
+      // select('*') e não uma lista de colunas: pedir "cpf" por nome faria
+      // o próprio select falhar quando é justamente essa coluna que falta.
+      // O retorno permite conferir se alguma linha foi atingida.
       const exec = async (d: Record<string, unknown>) =>
         op === 'insert'
-          ? await admin.from('User').insert(d)
-          : await admin.from('User').update(d).ilike('email', alvoEmail!);
-      let { error } = await exec(dados);
-      let cpfIgnorado = false;
+          ? await admin.from('User').insert(d).select('*')
+          : await admin.from('User').update(d).ilike('email', alvoEmail!).select('*');
+
+      let { data, error } = await exec(dados);
+      let motivoCpf = '';
       if (error && /cpf/i.test(error.message)) {
+        const original = error.message;
         const { cpf: _ignorado, ...semCpf } = dados;
-        ({ error } = await exec(semCpf));
-        cpfIgnorado = !error;
+        ({ data, error } = await exec(semCpf));
+        if (!error) motivoCpf = original;
       }
-      return { error, cpfIgnorado };
+      if (error) return { error, motivoCpf: '', nenhumaLinha: false };
+
+      // Um update que não casa nenhuma linha NÃO é erro para o PostgREST:
+      // sem esta checagem, "nada foi salvo" chega à tela como sucesso.
+      const nenhumaLinha = !data || data.length === 0;
+
+      // Última rede: linha gravada, mas o CPF voltou vazio (trigger, regra
+      // ou coluna gerada mexendo no valor).
+      const gravado = (data || [])[0] as { cpf?: string | null } | undefined;
+      if (!motivoCpf && !nenhumaLinha && dados.cpf && gravado && !gravado.cpf) {
+        motivoCpf = 'a linha foi gravada, mas o banco devolveu o campo cpf vazio';
+      }
+      return { error, motivoCpf, nenhumaLinha };
     };
 
     // Acessos por inventário (tela de Permissões). Identifica pelo nome,
@@ -98,7 +117,7 @@ Deno.serve(async (req) => {
       // "perfil" só vem das versões novas do app; sem ele a função se
       // comporta como antes e o app grava a linha por conta própria.
       if (perfil) {
-        const { error: erroPerfil, cpfIgnorado } = await gravarPerfil('insert', perfil);
+        const { error: erroPerfil, motivoCpf } = await gravarPerfil('insert', perfil);
         if (erroPerfil) {
           // desfaz o login para não deixar usuário órfão no Auth
           const { data: l2 } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -106,7 +125,7 @@ Deno.serve(async (req) => {
           if (criado) await admin.auth.admin.deleteUser(criado.id);
           return json({ error: 'Login criado, mas falhou ao salvar o perfil: ' + erroPerfil.message }, 400);
         }
-        if (cpfIgnorado) return json({ ok: true, aviso: AVISO_CPF });
+        if (motivoCpf) return json({ ok: true, aviso: avisoCpf(motivoCpf) });
       }
       return json({ ok: true });
     }
@@ -131,9 +150,12 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 400);
       }
       if (perfil) {
-        const { error: erroPerfil, cpfIgnorado } = await gravarPerfil('update', perfil, email);
+        const { error: erroPerfil, motivoCpf, nenhumaLinha } = await gravarPerfil('update', perfil, email);
         if (erroPerfil) return json({ error: 'Falha ao salvar o usuário: ' + erroPerfil.message }, 400);
-        if (cpfIgnorado) return json({ ok: true, aviso: AVISO_CPF });
+        if (nenhumaLinha) {
+          return json({ error: 'Nada foi salvo: nenhuma linha da tabela "User" tem o e-mail ' + email }, 400);
+        }
+        if (motivoCpf) return json({ ok: true, aviso: avisoCpf(motivoCpf) });
       }
       return json({ ok: true });
     }
