@@ -145,6 +145,10 @@ export const TermsScreen: React.FC = () => {
         html: termoHtml(template.name, template.content, termoData),
         filename: `termo-${template.name.toLowerCase()}-${colabNome.toLowerCase().replace(/\s+/g, '-')}.pdf`,
         pasta: pastaDrive,
+        colaborador: colabNome,
+        unidade: inv,
+        template: template.name,
+        equipamentos: linhas,
         mensagem: `${termoTitulo(template.name)} — ${colabNome}. Segue para assinatura eletrônica.`,
         signatarios: [
           { name: colabNome, email: emailColab, documentation: dadosColab?.cpfUsuario, sign_as: 'party' },

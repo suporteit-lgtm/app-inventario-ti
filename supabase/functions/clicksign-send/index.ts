@@ -89,14 +89,21 @@ Deno.serve(async (req) => {
         : 'https://app.clicksign.com';
 
     const body = await req.json();
-    const { filename, pdfBase64, signers, message, deadlineDays, pasta } = body as {
-      filename: string;
-      pdfBase64: string;
-      signers: Signer[];
-      message?: string;
-      deadlineDays?: number;
-      pasta?: string;
-    };
+    const { filename, pdfBase64, signers, message, deadlineDays, pasta, colaborador, unidade, template, equipamentos } =
+      body as {
+        filename: string;
+        pdfBase64: string;
+        signers: Signer[];
+        message?: string;
+        deadlineDays?: number;
+        pasta?: string;
+        // usados só para o histórico da tela de termos; versões antigas do
+        // app não mandam, e aí caímos no que dá para deduzir dos signatários
+        colaborador?: string;
+        unidade?: string;
+        template?: string;
+        equipamentos?: string[];
+      };
     if (!filename || !pdfBase64 || !Array.isArray(signers) || !signers.length) {
       return json({ error: 'Parâmetros inválidos' }, 400);
     }
@@ -180,6 +187,28 @@ Deno.serve(async (req) => {
         });
         enviados.push(s.email.trim());
       }
+    }
+
+    // Histórico do termo. Falhar aqui NÃO invalida o envio: o documento já
+    // está na Clicksign e os e-mails já saíram — derrubar a resposta faria a
+    // tela dizer "falhou" para algo que aconteceu.
+    try {
+      // O app põe o colaborador em primeiro e anexa a empresa por último
+      const primeiro = signers[0];
+      const { error: erroHist } = await admin.from('TermoEnvio').insert({
+        id: crypto.randomUUID(),
+        documentKey,
+        colaborador: (colaborador || primeiro?.name || '—').trim(),
+        emailColaborador: primeiro?.email?.trim() || null,
+        unidade: (unidade || pasta || '').trim() || null,
+        template: template || null,
+        equipamentos: Array.isArray(equipamentos) && equipamentos.length ? equipamentos : null,
+        status: 'enviado',
+        enviadoPor: user.email,
+      });
+      if (erroHist) console.error('[clicksign-send] histórico não gravado:', erroHist.message);
+    } catch (e) {
+      console.error('[clicksign-send] histórico não gravado:', e);
     }
 
     console.log('[clicksign-send] concluído. Enviados:', enviados.join(', '));

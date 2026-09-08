@@ -19,8 +19,9 @@ import {
   iniciais,
   sigla,
   tipoTag,
+  TermoEnvio,
 } from '../types';
-import { ALERTAS, CATEGORIAS, COLABORADORES, EQUIPMENTS, IMPORTS, INVENTORIES, MOVEMENTS, USERS } from './mock';
+import { ALERTAS, CATEGORIAS, COLABORADORES, EQUIPMENTS, IMPORTS, INVENTORIES, MOVEMENTS, TERMOS, USERS } from './mock';
 
 export interface DB {
   equipments: Equipment[];
@@ -33,6 +34,7 @@ export interface DB {
   categorias: string[];
   templates: TermoTemplateDB[];
   logs: EquipmentLogEntry[];
+  termos: TermoEnvio[];
 }
 
 export interface TermoRecord {
@@ -277,6 +279,7 @@ class MockRepo implements Repo {
       categorias: [...CATEGORIAS],
       templates: TERMO_TEMPLATES_PADRAO.map((t, i) => ({ ...t, id: i + 1 })),
       logs: [],
+      termos: [...TERMOS],
     };
     return this.db;
   }
@@ -776,11 +779,15 @@ class SupabaseRepo implements Repo {
 
   async fetchAll(): Promise<DB> {
     await this.loadRefs();
-    const [eq, us, hist, tpl] = await Promise.all([
+    const [eq, us, hist, tpl, trm] = await Promise.all([
       this.sb.from('Equipment').select('*').order('createdAt', { ascending: false }),
       this.sb.from('User').select('*').order('name'),
       this.sb.from('AssignmentHistory').select('*').order('startDate', { ascending: false }).limit(200),
       this.sb.from('DocumentTemplate').select('*').order('id'),
+      // A tabela pode ainda não existir (criar-tabela-termos.sql não rodado):
+      // nesse caso a tela mostra todo mundo como "não enviado" em vez de a
+      // carga inteira falhar.
+      this.sb.from('TermoEnvio').select('*').order('enviadoEm', { ascending: false }),
     ]);
     if (eq.error) throw eq.error;
     if (us.error) throw us.error;
@@ -884,6 +891,23 @@ class SupabaseRepo implements Repo {
 
     const categorias = [...new Set(this.cats.map((c) => c.name))].sort();
     const templates = mergeTemplates((tpl.data as any[]) || []);
+    if (trm.error) console.warn('TermoEnvio indisponível:', trm.error.message);
+    const termos: TermoEnvio[] = ((trm.data || []) as any[]).map((r) => ({
+      id: r.id,
+      documentKey: r.documentKey || undefined,
+      colaborador: r.colaborador || '—',
+      emailColaborador: r.emailColaborador || undefined,
+      unidade: r.unidade || undefined,
+      template: r.template || undefined,
+      equipamentos: Array.isArray(r.equipamentos) ? r.equipamentos : [],
+      status: r.status === 'assinado' || r.status === 'recusado' ? r.status : 'enviado',
+      driveFileId: r.driveFileId || undefined,
+      motivoRecusa: r.motivoRecusa || undefined,
+      enviadoPor: r.enviadoPor || undefined,
+      enviadoEm: r.enviadoEm || undefined,
+      assinadoEm: r.assinadoEm || undefined,
+      recusadoEm: r.recusadoEm || undefined,
+    }));
 
     return {
       equipments,
@@ -903,6 +927,7 @@ class SupabaseRepo implements Repo {
       categorias: categorias.length ? categorias : [...CATEGORIAS],
       templates: templates.length ? templates : TERMO_TEMPLATES_PADRAO,
       logs,
+      termos,
     };
   }
 

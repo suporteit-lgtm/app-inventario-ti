@@ -12,6 +12,7 @@ export const MoreSheet: React.FC = () => {
   const isAdmin = app.session?.role === 'Admin';
 
   const items: { label: string; screen: Screen }[] = [
+    { label: 'Status dos termos', screen: 'termos-status' },
     { label: 'Movimentações', screen: 'mov' },
     { label: 'Relatórios', screen: 'rel' },
     { label: 'Alertas', screen: 'alerts' },

@@ -25,6 +25,11 @@ export async function enviarParaAssinatura(opts: {
   mensagem?: string;
   /** Nome da pasta no Drive compartilhado (unidade) — ex.: "Belo Horizonte" */
   pasta?: string;
+  /** Campos do histórico, usados pela tela "Status dos termos" */
+  colaborador?: string;
+  unidade?: string;
+  template?: string;
+  equipamentos?: string[];
 }): Promise<string[]> {
   if (Platform.OS === 'web') {
     throw new Error('O envio para assinatura está disponível no aplicativo instalado (Android/iOS).');
@@ -63,6 +68,10 @@ export async function enviarParaAssinatura(opts: {
         signers: lista,
         message: opts.mensagem,
         pasta: opts.pasta,
+        colaborador: opts.colaborador,
+        unidade: opts.unidade,
+        template: opts.template,
+        equipamentos: opts.equipamentos,
         deadlineDays: 30,
       }),
     });

@@ -6,6 +6,7 @@ export type Screen =
   | 'home'
   | 'inv'
   | 'termos'
+  | 'termos-status'
   | 'detail'
   | 'form'
   | 'mov'
@@ -24,6 +25,7 @@ export const SCREEN_TITLES: Partial<Record<Screen, string>> = {
   alerts: 'Alertas',
   import: 'Importar CSV',
   termos: 'Termo de responsabilidade',
+  'termos-status': 'Status dos termos',
 };
 
 export type ScanHandler = ((code: string) => void) | null;

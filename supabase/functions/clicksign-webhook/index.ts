@@ -17,7 +17,31 @@
 //   GOOGLE_IMPERSONATE_EMAIL  = (só para pasta comum) termos@locgrupo.com.br —
 //                               exige delegação no Admin do Workspace
 
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
 const enc = new TextEncoder();
+
+// Atualiza a linha do termo em "TermoEnvio". Só a service_role escreve
+// nessa tabela; o app apenas lê.
+const atualizarTermo = async (documentKey: string, campos: Record<string, unknown>) => {
+  try {
+    const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data, error } = await admin
+      .from('TermoEnvio')
+      .update(campos)
+      .eq('documentKey', documentKey)
+      .select('id');
+    if (error) return console.error('[webhook] histórico não atualizado:', error.message);
+    // Um update que não casa nenhuma linha não é erro para o PostgREST —
+    // sem este aviso, um termo enviado por uma versão antiga do app (que
+    // não gravava histórico) sumiria da tela sem explicação.
+    if (!data || !data.length) {
+      console.warn('[webhook] nenhum termo com documentKey', documentKey, '— enviado antes do histórico existir?');
+    }
+  } catch (e) {
+    console.error('[webhook] histórico não atualizado:', e);
+  }
+};
 
 const b64url = (input: string | Uint8Array) => {
   const bytes = typeof input === 'string' ? enc.encode(input) : input;
@@ -198,6 +222,28 @@ Deno.serve(async (req) => {
     const nomeEvento = payload?.event?.name || '';
     console.log('[webhook] evento:', nomeEvento, '| caminho no payload:', payload?.document?.path || '(sem path)');
 
+    // Recusa: registra e encerra — não há PDF assinado para arquivar
+    if (nomeEvento === 'refusal') {
+      const chave = payload?.document?.key || payload?.event?.data?.document_key;
+      const dados = payload?.event?.data || {};
+      const quem = [dados?.user?.name, dados?.user?.email].filter(Boolean).join(' ');
+      const motivos = Array.isArray(dados?.refusal?.reasons) ? dados.refusal.reasons.join('; ') : '';
+      const comentario = dados?.refusal?.comment || '';
+      const motivo = [quem, motivos, comentario].filter(Boolean).join(' — ') || 'sem motivo informado';
+      console.log('[webhook] recusa registrada para', chave, ':', motivo);
+      if (chave) {
+        await atualizarTermo(chave, {
+          status: 'recusado',
+          motivoRecusa: motivo.slice(0, 500),
+          recusadoEm: new Date().toISOString(),
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, recusado: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // só interessa quando o documento é finalizado (todos assinaram)
     if (!['auto_close', 'close', 'document_closed'].includes(nomeEvento)) {
       console.log('[webhook] evento ignorado (não é finalização):', nomeEvento);
@@ -289,6 +335,11 @@ Deno.serve(async (req) => {
     const existente = await arquivoJaExiste(gtoken, pastaFinal, filename);
     if (existente) {
       console.log('[webhook] arquivo já estava no Drive, nada a fazer. fileId:', existente);
+      await atualizarTermo(documentKey, {
+        status: 'assinado',
+        driveFileId: existente,
+        assinadoEm: new Date().toISOString(),
+      });
       return new Response(JSON.stringify({ ok: true, jaExistia: true, fileId: existente }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -297,6 +348,11 @@ Deno.serve(async (req) => {
 
     const arquivo = await uploadPdf(gtoken, pastaFinal, filename, pdf);
     console.log('[webhook] SALVO no Drive. fileId:', arquivo.id);
+    await atualizarTermo(documentKey, {
+      status: 'assinado',
+      driveFileId: arquivo.id,
+      assinadoEm: new Date().toISOString(),
+    });
 
     return new Response(JSON.stringify({ ok: true, pasta: pastaUnidade, fileId: arquivo.id }), {
       status: 200,

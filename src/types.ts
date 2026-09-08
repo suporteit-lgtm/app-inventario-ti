@@ -434,6 +434,30 @@ __________________________________
 CNPJ: {CNPJ_EMPRESA}
 Empresa`;
 
+/** Uma linha da tabela "TermoEnvio": um termo mandado para assinatura. */
+export type TermoStatus = 'enviado' | 'assinado' | 'recusado';
+
+export interface TermoEnvio {
+  id: string;
+  documentKey?: string;
+  colaborador: string;
+  emailColaborador?: string;
+  unidade?: string;
+  template?: string;
+  equipamentos: string[];
+  status: TermoStatus;
+  driveFileId?: string;
+  motivoRecusa?: string;
+  enviadoPor?: string;
+  enviadoEm?: string;
+  assinadoEm?: string;
+  recusadoEm?: string;
+}
+
+/** O PDF assinado fica no Drive compartilhado; o webhook guarda só o id. */
+export const linkDoDrive = (fileId?: string) =>
+  fileId ? `https://drive.google.com/file/d/${fileId}/view` : '';
+
 export const TERMO_TEMPLATES_PADRAO: TermoTemplateDB[] = [
   { id: null, name: 'Responsabilidade', content: TERMO_RESPONSABILIDADE_OFICIAL },
   { id: null, name: 'Comodato', content: TERMO_COMODATO_OFICIAL },

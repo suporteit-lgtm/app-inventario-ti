@@ -27,6 +27,7 @@ import { InventoryScreen } from './src/screens/InventoryScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { MovScreen } from './src/screens/MovScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
+import { TermosStatusScreen } from './src/screens/TermosStatusScreen';
 import { TermsScreen } from './src/screens/TermsScreen';
 import { UsersScreen } from './src/screens/UsersScreen';
 import { AppProvider, useApp } from './src/state/AppContext';
@@ -36,6 +37,7 @@ const SCREENS: Record<string, React.ComponentType> = {
   home: HomeScreen,
   inv: InventoryScreen,
   termos: TermsScreen,
+  'termos-status': TermosStatusScreen,
   detail: DetailScreen,
   form: FormScreen,
   mov: MovScreen,

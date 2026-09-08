@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { DB, genId, repo, TermoRecord } from '../data/repo';
 import { buildXls, equipmentsMatrix, matrixToCsv, shareCsv, shareXls } from '../lib/export';
+import { getSupabase } from '../lib/supabase';
 import { darkTheme, lightTheme, Theme } from '../theme/tokens';
 import { AppUser, EquipForm, Equipment, TermoTemplateDB } from '../types';
 
@@ -53,6 +54,7 @@ const emptyDb: DB = {
   categorias: [],
   templates: [],
   logs: [],
+  termos: [],
 };
 
 interface AppCtx {
@@ -171,6 +173,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     })();
   }, []);
+
+  // O banco é compartilhado com o sistema web e com os outros aparelhos.
+  // Sem isto, o que muda fora daqui só aparecia ao fechar e abrir o app.
+  // Não tentamos aplicar a mudança linha a linha: recarregamos tudo, que é
+  // o que o resto do app já faz depois de qualquer gravação.
+  useEffect(() => {
+    if (!session) return;
+    const sb = getSupabase();
+    if (!sb) return; // modo demonstração: não há servidor para escutar
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Uma edição em massa (importação de CSV, por exemplo) dispara dezenas
+    // de eventos seguidos; a espera junta todos numa recarga só.
+    const recarregarEmBreve = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        reload();
+      }, 700);
+    };
+
+    const canal = sb
+      .channel('mudancas-do-app')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Equipment' }, recarregarEmBreve)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'TermoEnvio' }, recarregarEmBreve)
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      sb.removeChannel(canal);
+    };
+  }, [session?.email]);
 
   const showToast = (msg: string) => {
     setToast(msg);
