@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InvChip } from '../components/InvChip';
 import { Sheet } from '../components/Sheet';
 import { Tela } from '../components/Tela';
-import { Card, Checkbox, PrimaryButton, StatusBadge, TypeTag } from '../components/ui';
+import { Card, Checkbox, PrimaryButton, SEM_AUTOCOMPLETAR, StatusBadge, TypeTag } from '../components/ui';
 import { useNav } from '../nav/NavContext';
 import { useApp } from '../state/AppContext';
 import { equipNome, EQUIP_STATUS, invDisplay, shortName, tipoTag } from '../types';
@@ -57,6 +57,7 @@ export const InventoryScreen: React.FC = () => {
           >
             <Search size={17} color={theme.muted2} strokeWidth={2} />
             <TextInput
+              {...SEM_AUTOCOMPLETAR}
               value={search}
               onChangeText={setSearch}
               placeholder="Buscar por nome, serial, patrimônio…"

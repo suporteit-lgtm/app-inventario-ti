@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { SubHeader } from '../components/SubHeader';
 import { Tela, TelaScroll } from '../components/Tela';
-import { FieldLabel, Input, PrimaryButton, SelectChip } from '../components/ui';
+import { FieldLabel, Input, PrimaryButton, SelectChip, SEM_AUTOCOMPLETAR } from '../components/ui';
 import { cpfValido, dataValida, emailValido } from '../lib/mascaras';
 import { useNav } from '../nav/NavContext';
 import { useApp } from '../state/AppContext';
@@ -183,6 +183,7 @@ export const FormScreen: React.FC = () => {
       <TextInput
         placeholder="Ex.: defeitos, riscos, tela com mancha, bateria fraca…"
         placeholderTextColor={theme.muted2}
+        {...SEM_AUTOCOMPLETAR}
         value={form.obs}
         onChangeText={(v) => set('obs', v)}
         multiline

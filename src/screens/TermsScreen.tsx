@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SubHeader } from '../components/SubHeader';
 import { Tela, TelaScroll } from '../components/Tela';
-import { Avatar, Card, Checkbox, FieldLabel, Input, OutlineButton, PrimaryButton, Radio, SelectChip } from '../components/ui';
+import { Avatar, Card, Checkbox, FieldLabel, Input, OutlineButton, PrimaryButton, Radio, SelectChip, SEM_AUTOCOMPLETAR } from '../components/ui';
 import { EMAIL_EMPRESA, enviarParaAssinatura } from '../lib/clicksign';
 import { confirmAsync } from '../lib/confirm';
 import { sharePdf } from '../lib/export';
@@ -233,6 +233,7 @@ export const TermsScreen: React.FC = () => {
             >
               <Search size={17} color={theme.muted2} strokeWidth={2} />
               <TextInput
+                {...SEM_AUTOCOMPLETAR}
                 value={busca}
                 onChangeText={setBusca}
                 placeholder="Buscar colaborador pelo nome…"
@@ -380,6 +381,7 @@ export const TermsScreen: React.FC = () => {
                   <View>
                     <FieldLabel>Descrição das avarias, faltas ou observações</FieldLabel>
                     <TextInput
+                      {...SEM_AUTOCOMPLETAR}
                       value={avarias}
                       onChangeText={setAvarias}
                       placeholder="Ex.: tela trincada, sem carregador…"

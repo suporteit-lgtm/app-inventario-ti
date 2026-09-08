@@ -168,6 +168,20 @@ const TECLADOS: Partial<Record<TipoMascara, TextInputProps['keyboardType']>> = {
   email: 'email-address',
 };
 
+// No Android, a sugestão/autopreenchimento do teclado briga com o
+// onChangeText de um campo controlado: o teclado reenvia o texto inteiro e
+// ele sai duplicado ("DellDell"). Desligar autocompletar e autocorreção é o
+// contorno conhecido — e vale para todo campo controlado do app, por isso
+// fica aqui em vez de repetido campo a campo.
+// Vem ANTES do {...props} em cada campo, então dá para sobrescrever caso
+// algum campo específico precise de autocompletar.
+export const SEM_AUTOCOMPLETAR = {
+  autoComplete: 'off',
+  autoCorrect: false,
+  importantForAutofill: 'no',
+  spellCheck: false,
+} as const;
+
 export const Input: React.FC<TextInputProps & { height?: number; mascara?: TipoMascara }> = ({
   height = 46,
   style,
@@ -181,6 +195,7 @@ export const Input: React.FC<TextInputProps & { height?: number; mascara?: TipoM
   return (
     <TextInput
       placeholderTextColor={theme.muted2}
+      {...SEM_AUTOCOMPLETAR}
       keyboardType={props.keyboardType ?? (mascara ? TECLADOS[mascara] : undefined)}
       autoCapitalize={props.autoCapitalize ?? (mascara === 'email' ? 'none' : undefined)}
       {...props}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Sheet } from '../components/Sheet';
-import { FieldLabel, Input, PrimaryButton, SelectChip } from '../components/ui';
+import { FieldLabel, Input, PrimaryButton, SelectChip, SEM_AUTOCOMPLETAR } from '../components/ui';
 import { useNav } from '../nav/NavContext';
 import { useApp } from '../state/AppContext';
 import { TermoTemplateDB, TERMO_TEMPLATES_PADRAO } from '../types';
@@ -84,6 +84,7 @@ export const TemplatesSheet: React.FC = () => {
           <View>
             <FieldLabel>Texto do termo</FieldLabel>
             <TextInput
+              {...SEM_AUTOCOMPLETAR}
               value={conteudo}
               onChangeText={setConteudo}
               multiline
