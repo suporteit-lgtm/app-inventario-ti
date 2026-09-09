@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SubHeader } from '../components/SubHeader';
 import { Tela, TelaScroll } from '../components/Tela';
@@ -8,6 +8,7 @@ import { Avatar, Card, Checkbox, FieldLabel, Input, OutlineButton, PrimaryButton
 import { EMAIL_EMPRESA, enviarParaAssinatura } from '../lib/clicksign';
 import { confirmAsync } from '../lib/confirm';
 import { sharePdf } from '../lib/export';
+import { linkWhatsApp, mensagemTermoEnviado } from '../lib/whatsapp';
 import { splitTemplate, termoHtml } from '../pdf/termo';
 import { todayBR, useApp } from '../state/AppContext';
 import { cidadeUfDaUnidade, equipNome, iniciais, invDisplay, isTemplateDevolucao, termoTitulo, TERMO_TEMPLATES_PADRAO } from '../types';
@@ -24,6 +25,8 @@ export const TermsScreen: React.FC = () => {
   const [tplIdx, setTplIdx] = useState(0);
   // campos exclusivos do termo de devolução
   const [emailEx, setEmailEx] = useState('');
+  // Opcional: em branco, o termo vai do mesmo jeito e ninguém é avisado
+  const [telefone, setTelefone] = useState('');
   const [estadoPerfeito, setEstadoPerfeito] = useState(true);
   const [avarias, setAvarias] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -121,6 +124,19 @@ export const TermsScreen: React.FC = () => {
     }
   };
 
+  // O termo já foi enviado quando isto roda: falhar aqui não desfaz nada,
+  // por isso nunca lança — no máximo avisa que o número não serviu.
+  const avisarNoWhatsApp = async (numero: string, nomeTemplate: string, quem: string) => {
+    if (!numero.trim()) return;
+    const url = linkWhatsApp(numero, mensagemTermoEnviado(nomeTemplate, app.session?.nome || 'Equipe de T.I.'));
+    if (!url) return app.showToast(`Termo enviado. O WhatsApp de ${quem} parece incompleto — avise você mesmo.`);
+    try {
+      await Linking.openURL(url);
+    } catch {
+      app.showToast('Termo enviado, mas não consegui abrir o WhatsApp.');
+    }
+  };
+
   const enviarAssinatura = async () => {
     if (enviando) return;
     const devolucao = isTemplateDevolucao(template.name);
@@ -175,8 +191,13 @@ export const TermsScreen: React.FC = () => {
       setColabNome('');
       setSelIds([]);
       setEmailEx('');
+      setTelefone('');
       setEstadoPerfeito(true);
       setAvarias('');
+
+      // Por último de propósito: abrir o WhatsApp manda o app para segundo
+      // plano, e antes disto ainda havia a confirmação da devolução.
+      await avisarNoWhatsApp(telefone, template.name, colabNome);
     } catch (e: any) {
       app.showToast(e?.message || 'Falha ao enviar para assinatura');
     } finally {
@@ -361,6 +382,21 @@ export const TermsScreen: React.FC = () => {
                   estoque automaticamente.
                 </Text>
               ) : null}
+            </View>
+
+            <View>
+              <FieldLabel>WhatsApp do colaborador (opcional — avisa que o termo foi enviado)</FieldLabel>
+              <Input
+                placeholder="(00) 00000-0000"
+                mascara="telefone"
+                value={telefone}
+                onChangeText={setTelefone}
+              />
+              <Text style={{ fontSize: 12, color: theme.muted, marginTop: 6, lineHeight: 17 }}>
+                {telefone.trim()
+                  ? 'Ao enviar, o WhatsApp abre com a mensagem pronta — basta tocar em enviar.'
+                  : 'Em branco, o termo é enviado por e-mail normalmente, sem aviso no WhatsApp.'}
+              </Text>
             </View>
 
             {isTemplateDevolucao(template.name) && (
