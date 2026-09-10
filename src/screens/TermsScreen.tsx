@@ -11,7 +11,7 @@ import { sharePdf } from '../lib/export';
 import { linkWhatsApp, mensagemTermoEnviado } from '../lib/whatsapp';
 import { splitTemplate, termoHtml } from '../pdf/termo';
 import { todayBR, useApp } from '../state/AppContext';
-import { cidadeUfDaUnidade, equipNome, iniciais, invDisplay, isTemplateDevolucao, termoTitulo, TERMO_TEMPLATES_PADRAO } from '../types';
+import { cidadeUfDaUnidade, equipNome, iniciais, invDisplay, isTemplateDevolucao, resumoDoEquipamento, termoTitulo, TERMO_TEMPLATES_PADRAO } from '../types';
 
 export const TermsScreen: React.FC = () => {
   const app = useApp();
@@ -53,9 +53,7 @@ export const TermsScreen: React.FC = () => {
   const colabSel = colabs.find((c) => c.nome === colabNome);
   const pool = colabNome ? db.equipments.filter((e) => e.unidade === inv && e.usuario === colabNome) : [];
   const selecionados = pool.filter((e) => selIds.includes(e.id));
-  const linhas = selecionados.map(
-    (t) => `${equipNome(t)} — ${t.patrimonio} (S/N ${t.serial}${t.imei1 ? `, IMEI ${t.imei1}` : ''})`
-  );
+  const linhas = selecionados.map(resumoDoEquipamento);
   const dadosColab = selecionados[0];
   const unidadeAtiva = db.inventories.find((i) => i.nome === inv);
   const termoData = {

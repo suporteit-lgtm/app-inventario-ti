@@ -510,6 +510,36 @@ export const iniciais = (nome: string) =>
 
 export const equipNome = (e: Pick<Equipment, 'marca' | 'modelo'>) => `${e.marca} ${e.modelo}`.trim();
 
+/**
+ * Como o equipamento aparece na lista do termo.
+ *
+ * Linha corporativa não é aparelho: não tem marca, modelo, série nem IMEI, e
+ * saía quase em branco ("— PAT-0000 (S/N )"). O que identifica uma linha são
+ * outros campos, e eles ocupam os mesmos lugares:
+ *   operadora (+ plano) no lugar de marca/modelo
+ *   número              no lugar da série
+ *   ICCID               no lugar do IMEI
+ * Os rótulos mudam junto, senão o número da linha sairia rotulado como "S/N".
+ *
+ * Mesma regra do sistema web, para os dois termos dizerem a mesma coisa.
+ */
+export const resumoDoEquipamento = (e: Equipment): string => {
+  const linha = isLinha(e.tipo);
+
+  const nome = (linha ? [e.operadora, e.plano].filter(Boolean).join(' ') : equipNome(e)).trim() || e.tipo;
+  const serie = (linha ? e.telefone : e.serial) || '';
+  const chip = (linha ? e.iccid : e.imei1) || '';
+
+  const detalhes = [
+    serie ? `${linha ? 'Nº' : 'S/N'} ${serie}` : '',
+    chip ? `${linha ? 'ICCID' : 'IMEI'} ${chip}` : '',
+  ].filter(Boolean);
+
+  // patrimônio costuma faltar numa linha corporativa: some em vez de virar "—"
+  const cabeca = [nome, e.patrimonio].filter(Boolean).join(' — ');
+  return detalhes.length ? `${cabeca} (${detalhes.join(', ')})` : cabeca;
+};
+
 // Exibição compacta de nomes longos: primeiro + segundo nome
 export const shortName = (nome: string) => {
   const parts = nome.trim().split(/\s+/);
