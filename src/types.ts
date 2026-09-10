@@ -434,7 +434,11 @@ __________________________________
 CNPJ: {CNPJ_EMPRESA}
 Empresa`;
 
-/** Uma linha da tabela "TermoEnvio": um termo mandado para assinatura. */
+/**
+ * Um termo enviado para assinatura. É a tabela "TermSubmission" do sistema
+ * web — os dois usam a MESMA linha, para não haver dois históricos que
+ * discordam. Por isso os campos aqui seguem o modelo de lá, não o do app.
+ */
 export type TermoStatus = 'enviado' | 'assinado' | 'recusado';
 
 export interface TermoEnvio {
@@ -442,21 +446,32 @@ export interface TermoEnvio {
   documentKey?: string;
   colaborador: string;
   emailColaborador?: string;
+  cpfColaborador?: string;
   unidade?: string;
-  template?: string;
-  equipamentos: string[];
+  arquivo?: string;
   status: TermoStatus;
-  driveFileId?: string;
-  motivoRecusa?: string;
-  enviadoPor?: string;
+  /** URL completa do PDF assinado no Drive */
+  driveUrl?: string;
+  /** URL do documento no painel do Clicksign */
+  clicksignUrl?: string;
   enviadoEm?: string;
   assinadoEm?: string;
   recusadoEm?: string;
 }
 
-/** O PDF assinado fica no Drive compartilhado; o webhook guarda só o id. */
-export const linkDoDrive = (fileId?: string) =>
-  fileId ? `https://drive.google.com/file/d/${fileId}/view` : '';
+/** PENDENTE | ASSINADO | RECUSADO (como o web grava) → o vocabulário do app. */
+export const statusDoTermo = (bruto: string): TermoStatus =>
+  ({ ASSINADO: 'assinado', RECUSADO: 'recusado' } as Record<string, TermoStatus>)[
+    String(bruto || '').toUpperCase()
+  ] || 'enviado';
+
+/** "termo-responsabilidade-carla.pdf" → "Responsabilidade" */
+export const templateDoArquivo = (arquivo?: string): string => {
+  const m = /^termo-([a-zà-ú]+)/i.exec((arquivo || '').trim());
+  if (!m) return '';
+  const nome = m[1].toLowerCase();
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+};
 
 export const TERMO_TEMPLATES_PADRAO: TermoTemplateDB[] = [
   { id: null, name: 'Responsabilidade', content: TERMO_RESPONSABILIDADE_OFICIAL },

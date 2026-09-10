@@ -21,14 +21,21 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const enc = new TextEncoder();
 
-// Atualiza a linha do termo em "TermoEnvio". Só a service_role escreve
-// nessa tabela; o app apenas lê.
+// O sistema web guarda a URL inteira do arquivo, não o id — antes ela era
+// colada à mão por quem arquivava; agora o webhook preenche sozinho.
+const linkDoDrive = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
+
+// Atualiza a linha do termo em "TermSubmission" — a MESMA tabela do sistema
+// web, para os dois enxergarem o mesmo status. Só a service_role escreve por
+// aqui; o app apenas lê.
 const atualizarTermo = async (documentKey: string, campos: Record<string, unknown>) => {
   try {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { data, error } = await admin
-      .from('TermoEnvio')
-      .update(campos)
+      .from('TermSubmission')
+      // "updatedAt" é NOT NULL e não tem default: o Prisma preenche no código
+      // dele, então quem escreve de fora precisa mandar o valor.
+      .update({ ...campos, updatedAt: new Date().toISOString() })
       .eq('documentKey', documentKey)
       .select('id');
     if (error) return console.error('[webhook] histórico não atualizado:', error.message);
@@ -232,10 +239,10 @@ Deno.serve(async (req) => {
       const motivo = [quem, motivos, comentario].filter(Boolean).join(' — ') || 'sem motivo informado';
       console.log('[webhook] recusa registrada para', chave, ':', motivo);
       if (chave) {
+        // A tabela do web não tem coluna de motivo; ele fica no log.
         await atualizarTermo(chave, {
-          status: 'recusado',
-          motivoRecusa: motivo.slice(0, 500),
-          recusadoEm: new Date().toISOString(),
+          status: 'RECUSADO',
+          refusedAt: new Date().toISOString(),
         });
       }
       return new Response(JSON.stringify({ ok: true, recusado: true }), {
@@ -336,9 +343,9 @@ Deno.serve(async (req) => {
     if (existente) {
       console.log('[webhook] arquivo já estava no Drive, nada a fazer. fileId:', existente);
       await atualizarTermo(documentKey, {
-        status: 'assinado',
-        driveFileId: existente,
-        assinadoEm: new Date().toISOString(),
+        status: 'ASSINADO',
+        driveUrl: linkDoDrive(existente),
+        signedAt: new Date().toISOString(),
       });
       return new Response(JSON.stringify({ ok: true, jaExistia: true, fileId: existente }), {
         status: 200,
@@ -349,9 +356,9 @@ Deno.serve(async (req) => {
     const arquivo = await uploadPdf(gtoken, pastaFinal, filename, pdf);
     console.log('[webhook] SALVO no Drive. fileId:', arquivo.id);
     await atualizarTermo(documentKey, {
-      status: 'assinado',
-      driveFileId: arquivo.id,
-      assinadoEm: new Date().toISOString(),
+      status: 'ASSINADO',
+      driveUrl: linkDoDrive(arquivo.id),
+      signedAt: new Date().toISOString(),
     });
 
     return new Response(JSON.stringify({ ok: true, pasta: pastaUnidade, fileId: arquivo.id }), {

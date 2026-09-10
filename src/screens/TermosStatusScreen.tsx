@@ -4,7 +4,7 @@ import { FlatList, Linking, Pressable, Text, View } from 'react-native';
 import { SubHeader } from '../components/SubHeader';
 import { Card, SelectChip } from '../components/ui';
 import { useApp } from '../state/AppContext';
-import { invDisplay, linkDoDrive, TermoEnvio, TermoStatus } from '../types';
+import { invDisplay, templateDoArquivo, TermoEnvio, TermoStatus } from '../types';
 
 /** "não enviado" não existe no banco: é a ausência de termo para quem tem equipamento. */
 type Situacao = TermoStatus | 'nao_enviado';
@@ -91,13 +91,12 @@ export const TermosStatusScreen: React.FC = () => {
 
   const visiveis = filtro === 'todos' ? linhas : linhas.filter((l) => situacaoDe(l) === filtro);
 
-  const abrirDrive = async (fileId?: string) => {
-    const url = linkDoDrive(fileId);
-    if (!url) return app.showToast('Este termo não tem arquivo no Drive');
+  const abrir = async (url?: string, oQue = 'o link') => {
+    if (!url) return app.showToast(`Este termo não tem ${oQue}`);
     try {
       await Linking.openURL(url);
     } catch {
-      app.showToast('Não foi possível abrir o Drive');
+      app.showToast('Não foi possível abrir o link');
     }
   };
 
@@ -146,7 +145,7 @@ export const TermosStatusScreen: React.FC = () => {
                   <Text numberOfLines={1} style={{ fontSize: 12, color: theme.muted, marginTop: 1 }}>
                     {invDisplay(db.inventories, l.unidade)}
                     {l.equipamentos ? ' · ' + l.equipamentos + ' equip.' : ''}
-                    {t?.template ? ' · ' + t.template : ''}
+                    {templateDoArquivo(t?.arquivo) ? ' · ' + templateDoArquivo(t?.arquivo) : ''}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -155,19 +154,15 @@ export const TermosStatusScreen: React.FC = () => {
                 </View>
               </View>
 
-              {s === 'recusado' && t?.motivoRecusa ? (
-                <Text style={{ fontSize: 12, color: theme.muted, lineHeight: 17 }}>Motivo: {t.motivoRecusa}</Text>
-              ) : null}
-
               {s === 'nao_enviado' ? (
                 <Text style={{ fontSize: 12, color: theme.muted, lineHeight: 17 }}>
                   Está com equipamento e nunca recebeu termo. Gere em Termos.
                 </Text>
               ) : null}
 
-              {s === 'assinado' && t?.driveFileId ? (
+              {s === 'assinado' && t?.driveUrl ? (
                 <Pressable
-                  onPress={() => abrirDrive(t.driveFileId)}
+                  onPress={() => abrir(t.driveUrl, 'arquivo no Drive')}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -188,10 +183,30 @@ export const TermosStatusScreen: React.FC = () => {
                 </Pressable>
               ) : null}
 
-              {s === 'assinado' && !t?.driveFileId ? (
+              {s === 'assinado' && !t?.driveUrl ? (
                 <Text style={{ fontSize: 12, color: theme.muted }}>
                   Assinado, mas o arquivo ainda não chegou ao Drive.
                 </Text>
+              ) : null}
+
+              {s !== 'nao_enviado' && !t?.driveUrl && t?.clicksignUrl ? (
+                <Pressable
+                  onPress={() => abrir(t.clicksignUrl, 'link do Clicksign')}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 7,
+                    alignSelf: 'flex-start',
+                    paddingVertical: 7,
+                    paddingHorizontal: 11,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: theme.bd,
+                  }}
+                >
+                  <ExternalLink size={14} color={theme.muted} strokeWidth={2} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: theme.muted }}>Ver no Clicksign</Text>
+                </Pressable>
               ) : null}
             </Card>
           );

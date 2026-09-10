@@ -197,7 +197,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const canal = sb
       .channel('mudancas-do-app')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'Equipment' }, recarregarEmBreve)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'TermoEnvio' }, recarregarEmBreve)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'TermSubmission' }, recarregarEmBreve)
       .subscribe();
 
     return () => {

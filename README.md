@@ -67,7 +67,7 @@ Para um setup novo, rode **apenas `restore-after-reset.sql`** — ele é idempot
 | `setup-linhas-corporativas.sql` | colunas da categoria "Linhas corporativas" (operadora, ICCID, telefone…) |
 | `adicionar-colunas-unidade.sql` | colunas `cnpj`, `address` e `nickname` da tabela `Unit` — sem elas o termo sai sem CNPJ/endereço e a tela de unidades não salva |
 | `adicionar-coluna-cpf-usuario.sql` | coluna `cpf` da tabela `User` e recarga do cache de schema — sem ela o CPF do usuário não grava |
-| `criar-tabela-termos.sql` | tabela `TermoEnvio` (histórico de termos: enviado/assinado/recusado + link do Drive) e habilita o realtime em `Equipment` e `TermoEnvio` |
+| `criar-tabela-termos.sql` | libera a `TermSubmission` (tabela de termos do sistema web) para o app e habilita o realtime nela e em `Equipment` — não cria tabela |
 | `corrigir-permissoes.sql` | só os grants, quando o sintoma é `permission denied for schema public` nas Edge Functions |
 | `permitir-escrita-edge-functions.sql` | dá escrita à `service_role` sem reabrir a tabela `User` para o app — corrige `permission denied for table User` ao salvar usuários |
 | `limpar-templates-legados.sql` | limpeza de templates antigos de termo |

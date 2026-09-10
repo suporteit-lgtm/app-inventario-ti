@@ -19,6 +19,7 @@ import {
   iniciais,
   sigla,
   tipoTag,
+  statusDoTermo,
   TermoEnvio,
 } from '../types';
 import { ALERTAS, CATEGORIAS, COLABORADORES, EQUIPMENTS, IMPORTS, INVENTORIES, MOVEMENTS, TERMOS, USERS } from './mock';
@@ -784,10 +785,11 @@ class SupabaseRepo implements Repo {
       this.sb.from('User').select('*').order('name'),
       this.sb.from('AssignmentHistory').select('*').order('startDate', { ascending: false }).limit(200),
       this.sb.from('DocumentTemplate').select('*').order('id'),
-      // A tabela pode ainda não existir (criar-tabela-termos.sql não rodado):
-      // nesse caso a tela mostra todo mundo como "não enviado" em vez de a
-      // carga inteira falhar.
-      this.sb.from('TermoEnvio').select('*').order('enviadoEm', { ascending: false }),
+      // MESMA tabela do sistema web: o termo lançado lá aparece aqui e
+      // vice-versa. Pode não existir ainda (migration do web / script de
+      // liberação não rodados); nesse caso a tela mostra todo mundo como
+      // "não enviado" em vez de a carga inteira falhar.
+      this.sb.from('TermSubmission').select('*').order('sentAt', { ascending: false }),
     ]);
     if (eq.error) throw eq.error;
     if (us.error) throw us.error;
@@ -891,22 +893,22 @@ class SupabaseRepo implements Repo {
 
     const categorias = [...new Set(this.cats.map((c) => c.name))].sort();
     const templates = mergeTemplates((tpl.data as any[]) || []);
-    if (trm.error) console.warn('TermoEnvio indisponível:', trm.error.message);
+    if (trm.error) console.warn('TermSubmission indisponível:', trm.error.message);
     const termos: TermoEnvio[] = ((trm.data || []) as any[]).map((r) => ({
       id: r.id,
       documentKey: r.documentKey || undefined,
-      colaborador: r.colaborador || '—',
-      emailColaborador: r.emailColaborador || undefined,
-      unidade: r.unidade || undefined,
-      template: r.template || undefined,
-      equipamentos: Array.isArray(r.equipamentos) ? r.equipamentos : [],
-      status: r.status === 'assinado' || r.status === 'recusado' ? r.status : 'enviado',
-      driveFileId: r.driveFileId || undefined,
-      motivoRecusa: r.motivoRecusa || undefined,
-      enviadoPor: r.enviadoPor || undefined,
-      enviadoEm: r.enviadoEm || undefined,
-      assinadoEm: r.assinadoEm || undefined,
-      recusadoEm: r.recusadoEm || undefined,
+      colaborador: r.personName || '—',
+      emailColaborador: r.personEmail || undefined,
+      cpfColaborador: r.personCpf || undefined,
+      // o web guarda o id da unidade; o app trabalha com o nome
+      unidade: r.unitId ? this.unitName(r.unitId) : undefined,
+      arquivo: r.filename || undefined,
+      status: statusDoTermo(r.status),
+      driveUrl: r.driveUrl || undefined,
+      clicksignUrl: r.clicksignUrl || undefined,
+      enviadoEm: r.sentAt || undefined,
+      assinadoEm: r.signedAt || undefined,
+      recusadoEm: r.refusedAt || undefined,
     }));
 
     return {

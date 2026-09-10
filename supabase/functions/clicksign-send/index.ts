@@ -189,22 +189,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Histórico do termo. Falhar aqui NÃO invalida o envio: o documento já
-    // está na Clicksign e os e-mails já saíram — derrubar a resposta faria a
-    // tela dizer "falhou" para algo que aconteceu.
+    // Histórico do termo — na MESMA tabela do sistema web ("TermSubmission"),
+    // para o termo enviado pelo app aparecer lá e vice-versa, sem duplicar.
+    //
+    // Falhar aqui NÃO invalida o envio: o documento já está na Clicksign e os
+    // e-mails já saíram; derrubar a resposta faria a tela dizer "falhou" para
+    // algo que aconteceu.
     try {
+      // O app manda o NOME da unidade; a tabela do web guarda o id (FK).
+      let unitId: string | null = null;
+      const nomeUnidade = (unidade || pasta || '').trim();
+      if (nomeUnidade) {
+        const { data: u } = await admin.from('Unit').select('id').ilike('name', nomeUnidade).maybeSingle();
+        unitId = u?.id ?? null;
+      }
+
       // O app põe o colaborador em primeiro e anexa a empresa por último
       const primeiro = signers[0];
-      const { error: erroHist } = await admin.from('TermoEnvio').insert({
+      const agora = new Date().toISOString();
+
+      const { error: erroHist } = await admin.from('TermSubmission').insert({
         id: crypto.randomUUID(),
+        unitId,
+        personName: (colaborador || primeiro?.name || '—').trim(),
+        personEmail: primeiro?.email?.trim() || null,
+        personCpf: primeiro?.documentation?.trim() || null,
         documentKey,
-        colaborador: (colaborador || primeiro?.name || '—').trim(),
-        emailColaborador: primeiro?.email?.trim() || null,
-        unidade: (unidade || pasta || '').trim() || null,
-        template: template || null,
-        equipamentos: Array.isArray(equipamentos) && equipamentos.length ? equipamentos : null,
-        status: 'enviado',
-        enviadoPor: user.email,
+        filename,
+        status: 'PENDENTE',
+        sentAt: agora,
+        // "updatedAt" é NOT NULL e não tem default: o Prisma preenche no
+        // código dele, então quem escreve de fora precisa mandar o valor.
+        updatedAt: agora,
       });
       if (erroHist) console.error('[clicksign-send] histórico não gravado:', erroHist.message);
     } catch (e) {
